@@ -4,7 +4,7 @@ import sys
 import time
 from datetime import datetime
 
-MCAST_GRP = '224.3.29.71'
+MCAST_GRPS = ['224.3.29.71', '224.3.29.72']
 MCAST_PORT = 10000
 
 def heartbeat():
@@ -24,20 +24,20 @@ def heartbeat():
     # Bind to the server address
     sock.bind(('', MCAST_PORT))
 
-    # Tell the operating system to add the socket to the multicast group
+    # Tell the operating system to add the socket to the multicast groups
     # on all interfaces.
-    group = socket.inet_aton(MCAST_GRP)
-    mreq = struct.pack('4sL', group, socket.INADDR_ANY)
-    sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-
+    for MCAST_GRP in MCAST_GRPS:
+        group = socket.inet_aton(MCAST_GRP)
+        mreq = struct.pack('4sL', group, socket.INADDR_ANY)
+        sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
 
     host_name = socket.gethostname()
     host_ip = socket.gethostbyname(host_name)
     while True:
-        message = "%s | %s | %s" % (str(datetime.now()), host_name, host_ip)
-        sock.sendto(message.encode('utf-8'), (MCAST_GRP, MCAST_PORT))
-        print("%-25s <- %s" % ("[%s]:%s" % (MCAST_GRP, MCAST_PORT), message))
-        
+        for MCAST_GRP in MCAST_GRPS:
+            message = "%s | %s | %s | %s" % (MCAST_GRP, str(datetime.now()), host_name, host_ip)
+            sock.sendto(message.encode('utf-8'), (MCAST_GRP, MCAST_PORT))
+            print("%-25s <- %s" % ("[%s]:%s" % (MCAST_GRP, MCAST_PORT), message))
         while True:
             try:
                 data, address = sock.recvfrom(1024)
@@ -48,7 +48,6 @@ def heartbeat():
                 break
             except socket.timeout:
                 break
-
         time.sleep(5)
     sock.close()
 
