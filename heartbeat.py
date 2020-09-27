@@ -57,11 +57,15 @@ def heartbeat():
             print("%-55s Channel %d <- %s" % ("[%s]:%s" % (mcast_grp, mcast_port), channel_id, message))
         while True:
             try:
-                data, ancdata, msg_flags, address = sock.recvmsg(1024, 1024)
+                # 1024 byte buffer and therefor max message size
+                # Ancillary data buffer for IPV6_PKTINFO data item of 20 bytes: 16 bytes for dest_ip_address and 4 bytes for received_interface_id
+                data, ancdata, msg_flags, address = sock.recvmsg(1024, socket.CMSG_SPACE(20))
+                print(sys.getsizeof(ancdata))
                 cmsg_level, cmsg_type, cmsg_data = ancdata[0]
                 assert cmsg_level == socket.IPPROTO_IPV6
                 assert cmsg_type == socket.IPV6_PKTINFO
                 dest_ip_address, received_interface_id = struct.unpack("16si", cmsg_data)
+                print(dest_ip_address, received_interface_id)
                 channel_id = mcast_addrs_bin[dest_ip_address]
                 message = data.decode('utf-8')
                 recv_host, recv_port = socket.getnameinfo(address, (socket.NI_NUMERICHOST | socket.NI_NUMERICSERV)) # Gets full IPv6 address with scope
