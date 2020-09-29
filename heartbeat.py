@@ -7,13 +7,21 @@ from datetime import datetime
 # Must have prefix ff00::/8 for multicast
 # Also note ffx1::/16 is interface local and ffx2::/16 is link-local
 # Indexed by channel ID
-MCAST_GRPS = ['ff15:7079:7468:6f6e:6465:6d6f:6d63:6173', 'ff12:0:0:0:0:0:0:1%enp3s0', 'ff12:0:0:0:0:0:0:2%enp3s0', 'ff12:0:0:0:0:0:0:3%enp3s0']
+MCAST_GRPS = [
+    'ff15:7079:7468:6f6e:6465:6d6f:6d63:6173', 
+    'ff12:0:0:0:0:0:0:1%enp3s0',
+    'ff12:0:0:0:0:0:0:2%enp3s0',
+    'ff12:0:0:0:0:0:0:3%enp3s0'
+]
 MCAST_PORT = 10000
 
 def heartbeat():
     mcast_addrs = []
     for MCAST_GRP in MCAST_GRPS:
-        (family, socktype, proto, canonname, sockaddr) = socket.getaddrinfo(MCAST_GRP, MCAST_PORT, family=socket.AF_INET6, type=socket.SOCK_DGRAM)[0]
+        (family, socktype, proto, canonname, sockaddr) = socket.getaddrinfo(
+            MCAST_GRP, MCAST_PORT,
+            family=socket.AF_INET6, type=socket.SOCK_DGRAM
+        )[0]
         mcast_addrs.append(sockaddr)
 
     # Create a datagram (UDP) socket
@@ -40,7 +48,8 @@ def heartbeat():
 
         mcast_addrs_bin[mcast_group_bin] = len(mcast_addrs_bin) # Channel ID
 
-        # Corresponds to struct in6_mreq with multicast group and interface id in binary representation.
+        # Corresponds to struct in6_mreq
+        # with multicast group and interface id in binary representations.
         # 16s = 16 chars (bytes) for mcast_group_bin
         # i = signed int for scope_id
         mreq = struct.pack("16si", mcast_group_bin, scope_id)
@@ -54,22 +63,34 @@ def heartbeat():
             (mcast_grp, mcast_port, flow_info, scope_id) = mcast_addr
             message = "%s | %s %s" % (str(datetime.now()), host_name, host_ip)
             sock.sendto(message.encode('utf-8'), mcast_addr)
-            print("%-55s Channel %d <- %s" % ("[%s]:%s" % (mcast_grp, mcast_port), channel_id, message))
+            print("%-55s Channel %d <- %s" % 
+                ("[%s]:%s" % (mcast_grp, mcast_port), channel_id, message)
+            )
         while True:
             try:
                 # 1024 byte buffer and therefor max message size
-                # Ancillary data buffer for IPV6_PKTINFO data item of 20 bytes: 16 bytes for dest_ip_address and 4 bytes for received_interface_id
-                data, ancdata, msg_flags, address = sock.recvmsg(1024, socket.CMSG_SPACE(20))
-                print(sys.getsizeof(ancdata))
+                # Ancillary data buffer for IPV6_PKTINFO data item of 20 bytes:
+                #  16 bytes for to_address and 4 bytes for interface_id
+                data, ancdata, msg_flags, from_address = sock.recvmsg(
+                    1024, socket.CMSG_SPACE(20)
+                )
+                assert len(ancdata) == 1
                 cmsg_level, cmsg_type, cmsg_data = ancdata[0]
                 assert cmsg_level == socket.IPPROTO_IPV6
                 assert cmsg_type == socket.IPV6_PKTINFO
-                dest_ip_address, received_interface_id = struct.unpack("16si", cmsg_data)
-                print(dest_ip_address, received_interface_id)
-                channel_id = mcast_addrs_bin[dest_ip_address]
+                # Destination IP address of packet (e.g. multicast group),
+                # and the ID of the interface it was received on.
+                to_address, interface_id = struct.unpack("16si", cmsg_data)
+                channel_id = mcast_addrs_bin[to_address]
+
                 message = data.decode('utf-8')
-                recv_host, recv_port = socket.getnameinfo(address, (socket.NI_NUMERICHOST | socket.NI_NUMERICSERV)) # Gets full IPv6 address with scope
-                print("%-55s Channel %d -> %s" % ("[%s]:%s" % (recv_host, recv_port), channel_id, message))
+                # Gets IPv6 address and port the packet was sent from
+                from_ip, from_port = socket.getnameinfo(from_address,
+                    (socket.NI_NUMERICHOST | socket.NI_NUMERICSERV)
+                )
+                print("%-55s Channel %d -> %s" %
+                    ("[%s]:%s" % (from_ip, from_port), channel_id, message)
+                )
             except BlockingIOError:
                 break
         time.sleep(1)
