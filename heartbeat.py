@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 
 # Must have prefix ff00::/8 for multicast
-# Also note ffx1::/16 is interface local and ffx2::/16 is link-local
+# Also note ffx1::/16 is interface local and ffx2::/12 is link-local
 # Indexed by channel ID
 MCAST_GRPS = [
     'ff15:7079:7468:6f6e:6465:6d6f:6d63:6173', 
