@@ -77,10 +77,9 @@ def send(mcast_grp, message):
         family=socket.AF_INET6, type=socket.SOCK_DGRAM
     )[0]
     (mcast_addr, mcast_port, flow_info, scope_id) = sockaddr
-    encoded_message = message.encode('utf-8')
-    if len(encoded_message) > BUFFER_SIZE: # TODO test
+    if len(message) > BUFFER_SIZE: # TODO test
         raise Exception()
-    sock.sendto(encoded_message, sockaddr)
+    sock.sendto(message, sockaddr)
     # print("%-50s <- %s" % ("[%s]:%s" % (mcast_addr, mcast_port), message))
 
 
@@ -108,7 +107,7 @@ def receive():
         # BUFFER_SIZE byte buffer and therefor max message size
         # Ancillary data buffer for IPV6_PKTINFO data item of 20 bytes:
         #  16 bytes for to_address and 4 bytes for interface_id
-    data, ancdata, msg_flags, from_address = sock.recvmsg(
+    message, ancdata, msg_flags, from_address = sock.recvmsg(
         BUFFER_SIZE, socket.CMSG_SPACE(20)
     )
     # except BlockingIOError:
@@ -121,8 +120,7 @@ def receive():
     # Destination IP address of packet (multicast group),
     # and the ID of the interface it was received on.
     to_address, interface_id = struct.unpack("16si", cmsg_data)
-
-    message = data.decode('utf-8')
+    
     # Gets IPv6 address and port the packet was sent from
     from_ip, from_port = socket.getnameinfo(from_address,
         (socket.NI_NUMERICHOST | socket.NI_NUMERICSERV)
