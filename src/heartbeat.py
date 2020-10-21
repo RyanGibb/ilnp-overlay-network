@@ -1,6 +1,7 @@
-import transport
 import time
 from datetime import datetime
+
+import transport
 
 # Must have prefix ff00::/8 for multicast
 # Also note ffx1::/16 is interface local and ffx2::/12 is link-local
