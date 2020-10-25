@@ -23,7 +23,6 @@ static_masked_fields = (
 )
 
 
-# Message should be binary
 def send(locator, data):
     # TODO add address resolution and forwarding table
     # (locator -> interface, where an interface is a multicast group)
