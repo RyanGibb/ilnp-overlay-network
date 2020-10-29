@@ -1,7 +1,10 @@
 import struct
+import os
 
 import link
 
+
+CONFIG_FILENAME = "network_config.cnf"
 
 VERSION_SHIFT       = 28
 TRAFFIC_CLASS_SHIFT = 20
@@ -12,15 +15,17 @@ TRAFFIC_CLASS_MASK  = 0x0ff00000
 FLOW_LABEL_MASK     = 0x000fffff
 
 # static header fields
-version = 0         # not used
-traffic_class = 0   # not used
-flow_label = 0      # not used
+VERSION = 0         # not used
+TRAFFIC_CLASS = 0   # not used
+FLOW_LABEL = 0      # not used
 
-static_masked_fields = (
-    version         << VERSION_SHIFT        |
-    traffic_class   << TRAFFIC_CLASS_SHIFT  |
-    flow_label      << FLOW_LABEL_SHIFT
+STATIC_MASKS_FIELD = (
+    VERSION         << VERSION_SHIFT        |
+    TRAFFIC_CLASS   << TRAFFIC_CLASS_SHIFT  |
+    FLOW_LABEL      << FLOW_LABEL_SHIFT
 )
+
+locators_joined = []
 
 
 def send(locator, data):
@@ -37,7 +42,7 @@ def send(locator, data):
     destination_nid = 0 # TODO
     destination_locator = int(locator.replace(":", ""), 16) # hex to int
     header = struct.pack("!4s2sss8s8s8s8s",
-        static_masked_fields.to_bytes(4, byteorder="big", signed=False),
+        STATIC_MASKS_FIELD.to_bytes(4, byteorder="big", signed=False),
         payload_length      .to_bytes(2, byteorder="big", signed=False),
         next_header         .to_bytes(1, byteorder="big", signed=False),
         hop_limit           .to_bytes(1, byteorder="big", signed=False),
@@ -82,3 +87,28 @@ def receive():
     data = message[40:]
     # TODO check if destination locator & nid is this machine
     return data
+
+
+def startup():
+    # Read configuration file
+    global locators_joined
+    config_file = open(os.path.join(os.path.dirname(__file__), "..", CONFIG_FILENAME), "r")
+    for line in config_file:
+        line = line.strip()
+        if len(line) == 0 or line[0] == '#':
+            continue
+        line_split = line.split(":", 1)
+        if len(line_split) != 2:
+            continue
+        name, value = line_split
+        value = value.split("#")[0].strip()
+        if name == "LOCATOR":
+            locators_joined.append(value)
+    config_file.close()
+
+    for locator in locators_joined:
+        link.join(link.get_mcast_grp(locator, link.PackageType.CONTROL_PACKAGE))
+        link.join(link.get_mcast_grp(locator, link.PackageType.DATA_PACKAGE))
+
+
+startup()

@@ -1,0 +1,2 @@
+# don't trafic local configuration file changes
+*.cnf

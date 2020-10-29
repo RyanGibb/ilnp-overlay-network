@@ -1,0 +1,5 @@
+
+# Local UDP multicast link layer emulation configuration
+MCAST_PORT:         10000
+MCAST_INTERFACE:    eth0
+BUFFER_SIZE:        1024

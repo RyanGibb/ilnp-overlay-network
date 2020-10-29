@@ -7,12 +7,9 @@ import transport
 # Also note ffx1::/16 is interface local and ffx2::/12 is link-local
 # Indexed by channel ID
 LOCATORS = [
-    '6465:6d6f:6d63:6173', 
     '0:0:0:1',
-    '0:0:0:2',
-    '0:0:0:3'
+    '0:0:0:2'
 ]
-
 
 def heartbeat():
     while True:
