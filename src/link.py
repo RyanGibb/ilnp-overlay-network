@@ -4,21 +4,18 @@ import sys
 import os
 from enum import Enum
 
-
-CONFIG_FILENAME = "link_config.cnf"
-
 # Must have prefix ff00::/8 for multicast.
 # The next 4 bits are flags. Transient/non-perminant is denoted by 1.
 # The final 4 bits are for the scope. Link-local is denoted by 2.
 mcast_prefix = "ff12"
+
+CONFIG_FILENAME = "link_config.cnf"
 mcast_port = 10000
 mcast_interface = "eth0"
-
-locators_joined = []
-
 buffer_size = 1024
 
 joined_mcast_grps = set()
+
 
 class PackageType():
     DATA_PACKAGE = 0
@@ -51,10 +48,9 @@ def get_mcast_grp(locator, package_type):
 
 def send(mcast_grp, message):
     # TODO replace with control plane discovery of groups, current solution
-    # means can only receive from a group after sending to the group                  
+    # means can only receive from a group after sending to the group
     if mcast_grp not in joined_mcast_grps:
-        raise Exception("Not in mcast_group") # TODO exception types
-
+        raise IOError("Not joined multicast group '%s'" % mcast_grp)
     (family, socktype, proto, canonname, sockaddr) = socket.getaddrinfo(
         mcast_grp, mcast_port,
         family=socket.AF_INET6, type=socket.SOCK_DGRAM
@@ -66,6 +62,8 @@ def send(mcast_grp, message):
 
 
 def join(mcast_grp):
+    if mcast_grp in joined_mcast_grps:
+        raise IOError("Already joined multicast group '%s'" % mcast_grp)
     (family, socktype, proto, canonname, sockaddr) = socket.getaddrinfo(
         mcast_grp, mcast_port,
         family=socket.AF_INET6, type=socket.SOCK_DGRAM
@@ -122,7 +120,7 @@ def receive():
 
 def startup():
     # Read configuration file
-    global mcast_port, mcast_interface, locators_joined, buffer_size
+    global mcast_port, mcast_interface, buffer_size
     config_file = open(os.path.join(os.path.dirname(__file__), "..", CONFIG_FILENAME), "r")
     for line in config_file:
         line = line.strip()
