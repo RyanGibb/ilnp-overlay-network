@@ -58,7 +58,7 @@ def send(locator, data):
 def receive():
     interface, message = link.receive()
 
-    header = message[:40]
+    header = message[:40] # Header is 40 bytes
     (
         masked_bytes,
         payload_length_bytes,

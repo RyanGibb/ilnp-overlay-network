@@ -55,8 +55,11 @@ def send(mcast_grp, message):
         mcast_grp, mcast_port,
         family=socket.AF_INET6, type=socket.SOCK_DGRAM
     )[0]
-    if len(message) > buffer_size: # TODO test
-        raise Exception()
+    # If message larger than buffer size message will be truncated
+    if len(message) > buffer_size:
+        raise IOError("Message length larger than buffer size: %d > %d" %
+            (len(message), buffer_size)
+        )
     sock.sendto(message, sockaddr)
     # print("%-50s <- %s" % ("[%s]:%s" % (mcast_addr, mcast_port), message))
 
@@ -95,7 +98,7 @@ def receive():
     )
     # except BlockingIOError:
     #     return None
-    
+
     assert len(ancdata) == 1
     cmsg_level, cmsg_type, cmsg_data = ancdata[0]
     assert cmsg_level == socket.IPPROTO_IPV6
