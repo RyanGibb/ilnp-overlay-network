@@ -21,6 +21,7 @@ class PackageType():
     DATA_PACKAGE = 0
     CONTROL_PACKAGE = 1
 
+
 # package_type should be PackageType.DATA_PACKAGE or PackageType.CONTROL_PACKAGE
 # locator should be a 64 bit hex string
 def get_mcast_grp(locator, package_type):
@@ -86,9 +87,9 @@ def join(mcast_grp):
 
 
 def receive():
-        # buffer_size byte buffer and therefor max message size
-        # Ancillary data buffer for IPV6_PKTINFO data item of 20 bytes:
-        #  16 bytes for to_address and 4 bytes for interface_id
+    # buffer_size byte buffer and therefor max message size
+    # Ancillary data buffer for IPV6_PKTINFO data item of 20 bytes:
+    #  16 bytes for to_address and 4 bytes for interface_id
     message, ancdata, msg_flags, from_address = sock.recvmsg(
         buffer_size, socket.CMSG_SPACE(20)
     )
