@@ -35,16 +35,29 @@ local_identifier = None
 local_locator    = None
 
 
-def bytes_to_hex(bytes):
+def bytes_to_int(binary):
+    return int.from_bytes(binary, byteorder="big", signed=False)
+
+def bytes_to_hex(binary):
+    # integer = bytes_to_int(binary)
+    # hexadecimal = format(integer, "x")
     return ":".join([
         format(
             int.from_bytes(
-                bytes[2*i:2*i+2],
+                binary[2*i:2*i+2],
                 byteorder="big"
             ),
             "x"
-        ) for i in range(4)
+        ) for i in range(int(len(binary)/2))
     ])
+
+def int_to_bytes(integer, number_of_bytes):
+    return integer.to_bytes(number_of_bytes, byteorder="big", signed=False)
+
+def hex_to_bytes(hexadecimal, number_of_bytes):
+    hexadecimal_joined = "".join([x.zfill(4) for x in hexadecimal.split(":")])
+    integer = int(hexadecimal_joined, 16)
+    return int_to_bytes(integer, number_of_bytes)
 
 
 def send(locator, identifier, data):
@@ -77,19 +90,15 @@ def send(locator, identifier, data):
     next_header = 42 # identifies skinny transport layer
     payload_length = len(data)
     hop_limit   = 0 # TODO set
-    src_identifier = int(local_identifier.replace(":", ""), 16)
-    src_locator    = int(local_locator.replace(":", ""), 16)
-    dst_identifier = int(identifier.replace(":", ""), 16)
-    dst_locator    = int(locator.replace(":", ""), 16)
     header = struct.pack("!4s2sss8s8s8s8s",
         STATIC_MASKS_FIELD.to_bytes(4, byteorder="big", signed=False),
-        payload_length    .to_bytes(2, byteorder="big", signed=False),
-        next_header       .to_bytes(1, byteorder="big", signed=False),
-        hop_limit         .to_bytes(1, byteorder="big", signed=False),
-        src_locator       .to_bytes(8, byteorder="big", signed=False),
-        src_identifier    .to_bytes(8, byteorder="big", signed=False),
-        dst_locator       .to_bytes(8, byteorder="big", signed=False),
-        dst_identifier    .to_bytes(8, byteorder="big", signed=False),
+        int_to_bytes(payload_length,    2),
+        int_to_bytes(next_header,       1),
+        int_to_bytes(hop_limit,         1),
+        hex_to_bytes(local_locator,     8),
+        hex_to_bytes(local_identifier,  8),
+        hex_to_bytes(locator,           8),
+        hex_to_bytes(identifier,        8),
     )
 
     message = header + data
@@ -112,17 +121,19 @@ def receive():
     ) = struct.unpack("!4s2sss8s8s8s8s", header)
     
     # Not currently used
-    # masked_fields  = int.from_bytes(masked_bytes, byteorder="big", signed=False)
-    # version        = (masked_fields & VERSION_MASK)       >> VERSION_SHIFT
-    # traffic_class  = (masked_fields & TRAFFIC_CLASS_MASK) >> TRAFFIC_CLASS_SHIFT
-    # flow_label     = (masked_fields & FLOW_LABEL_MASK)    >> FLOW_LABEL_SHIFT
+    #masked_fields = int.from_bytes(masked_bytes, byteorder="big", signed=False)
+    #version       = (masked_fields & VERSION_MASK)       >> VERSION_SHIFT
+    #traffic_class = (masked_fields & TRAFFIC_CLASS_MASK) >> TRAFFIC_CLASS_SHIFT
+    #flow_label    = (masked_fields & FLOW_LABEL_MASK)    >> FLOW_LABEL_SHIFT
 
     dst_identifier = bytes_to_hex(dst_identifier_bytes)
-    if dst_identifier != local_identifier and dst_identifier == MCAST_IDENTIFIER:
+    print(dst_identifier)
+    if (dst_identifier != local_identifier and
+        dst_identifier != MCAST_IDENTIFIER):
         return
-    payload_length = int.from_bytes(payload_length_bytes, byteorder="big", signed=False)
-    next_header    = int.from_bytes(next_header_bytes,    byteorder="big", signed=False)
-    hop_limit      = int.from_bytes(hop_limit_bytes,      byteorder="big", signed=False)
+    payload_length = bytes_to_int(payload_length_bytes)
+    next_header    = bytes_to_int(next_header_bytes)
+    hop_limit      = bytes_to_int(hop_limit_bytes)
     src_identifier = bytes_to_hex(src_identifier_bytes)
     src_locator    = bytes_to_hex(src_locator_bytes)
     dst_locator    = bytes_to_hex(dst_locator_bytes)
@@ -134,7 +145,8 @@ def receive():
 def startup():
     # Read configuration file
     global locators_joined, local_identifier, local_locator
-    config_file = open(os.path.join(os.path.dirname(__file__), "..", CONFIG_FILENAME), "r")
+    filepath = os.path.join(os.path.dirname(__file__), "..", CONFIG_FILENAME)
+    config_file = open(filepath, "r")
     for line in config_file:
         line = line.strip()
         if len(line) == 0 or line[0] == '#':
