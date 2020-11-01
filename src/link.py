@@ -47,8 +47,6 @@ def get_mcast_grp(locator, package_type):
 
 
 def send(mcast_grp, message):
-    # TODO replace with control plane discovery of groups, current solution
-    # means can only receive from a group after sending to the group
     if mcast_grp not in joined_mcast_grps:
         raise IOError("Not joined multicast group '%s'" % mcast_grp)
     (family, socktype, proto, canonname, sockaddr) = socket.getaddrinfo(
@@ -61,7 +59,6 @@ def send(mcast_grp, message):
             (len(message), buffer_size)
         )
     sock.sendto(message, sockaddr)
-    # print("%-50s <- %s" % ("[%s]:%s" % (mcast_addr, mcast_port), message))
 
 
 def join(mcast_grp):
@@ -73,7 +70,7 @@ def join(mcast_grp):
     )[0]
     (mcast_addr, mcast_sock_port, flow_info, scope_id) = sockaddr
 
-    # remove interface suffix
+    # Remove interface suffix
     mcast_addr = mcast_addr.split("%")[0]
     # Binary representation of mcast_addr. Corresponds to struct in6_addr.
     mcast_group_bin = socket.inet_pton(socket.AF_INET6, mcast_addr)
@@ -89,15 +86,12 @@ def join(mcast_grp):
 
 
 def receive():
-    # try:
         # buffer_size byte buffer and therefor max message size
         # Ancillary data buffer for IPV6_PKTINFO data item of 20 bytes:
         #  16 bytes for to_address and 4 bytes for interface_id
     message, ancdata, msg_flags, from_address = sock.recvmsg(
         buffer_size, socket.CMSG_SPACE(20)
     )
-    # except BlockingIOError:
-    #     return None
 
     assert len(ancdata) == 1
     cmsg_level, cmsg_type, cmsg_data = ancdata[0]
@@ -111,14 +105,11 @@ def receive():
     from_ip, from_port = socket.getnameinfo(from_address,
         (socket.NI_NUMERICHOST | socket.NI_NUMERICSERV)
     )
-    # print("%-50s -> %s" % ("[%s]:%s" % (from_ip, from_port), message))
 
-    # Return the multicast group the packet was sent to, which corresponds to
-    # the interface it was recieved on for the emulated link layer,
-    # and the message.
+    # Exctract packet type from multicast group
+    package_type = int.from_bytes(to_address[2:4], byteorder="big")
 
-    # TODO package type and channels
-    return (to_address, message)
+    return package_type, message
 
 
 def startup():
@@ -162,7 +153,7 @@ def startup():
     global sock
     sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
     # Set to non-blocking
-    sock.settimeout(0) # TODO set timeout?
+    sock.settimeout(0)
     # Set time-to-live to 1
     sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
     # Bind to mcast_port

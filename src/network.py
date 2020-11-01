@@ -97,7 +97,7 @@ def send(locator, identifier, data):
 
 
 def receive():
-    interface, message = link.receive()
+    package_type, message = link.receive()
 
     header = message[:40] # Header is 40 bytes
     (
