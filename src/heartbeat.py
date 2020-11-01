@@ -3,26 +3,18 @@ from datetime import datetime
 
 import transport
 
-# Must have prefix ff00::/8 for multicast
-# Also note ffx1::/16 is interface local and ffx2::/12 is link-local
-# Indexed by channel ID
-LOCATORS = [
-    '0:0:0:1',
-    '0:0:0:2'
-]
+LOCATOR = "0:0:0:1"
+ADDR    = ":".join([LOCATOR, transport.network.MCAST_IDENTIFIER])
 
 def heartbeat():
     while True:
-        for channel_id in range(len(LOCATORS)):
-            message = "%s | %s" % (str(datetime.now()), LOCATORS[channel_id])
-            transport.send(LOCATORS[channel_id], message)
-            print("%-30s Channel %d <- %s" % 
-                (LOCATORS[channel_id], channel_id, message)
-            )
-        while True:
+        message = "%s | %s" % (str(datetime.now()), transport.network.local_identifier)
+        transport.send(ADDR, message)
+        print("%-50s <- %s" % (ADDR, message))
+        while True: 
             try:
-                message = transport.receive()
-                print("-> %s" % message)
+                message, src_addr, dst_addr = transport.receive()
+                print("%-50s -> %s" % (src_addr, message))
             except BlockingIOError:
                 break
         time.sleep(1)

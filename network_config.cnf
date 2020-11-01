@@ -1,4 +1,6 @@
 
 # Locators to join (which correspond tp multicast addresses)
 LOCATOR: 0:0:0:1
-LOCATOR: 0:0:0:2
+
+# Not guaranteed to be used if collision detected
+LOCAL_IDENTIFIER: ffff:0:0:1
