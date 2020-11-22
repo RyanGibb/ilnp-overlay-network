@@ -153,8 +153,8 @@ def startup():
     # Create a datagram (UDP) socket
     global sock
     sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
-    # Set to non-blocking
-    sock.settimeout(0)
+    # Set to blocking
+    sock.settimeout(None)
     # Set time-to-live to 1
     sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
     # Bind to mcast_port

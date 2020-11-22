@@ -1,9 +1,11 @@
 import struct
 import os
 import secrets
+import collections
+import threading
 
 import link
-
+from util import *
 
 CONFIG_FILENAME = "network_config.cnf"
 
@@ -34,33 +36,12 @@ locators_joined = []
 local_identifier = None
 local_locator    = None
 
-
-def bytes_to_int(binary):
-    return int.from_bytes(binary, byteorder="big", signed=False)
-
-def bytes_to_hex(binary):
-    # integer = bytes_to_int(binary)
-    # hexadecimal = format(integer, "x")
-    return ":".join([
-        format(
-            int.from_bytes(
-                binary[2*i:2*i+2],
-                byteorder="big"
-            ),
-            "x"
-        ) for i in range(int(len(binary)/2))
-    ])
-
-def int_to_bytes(integer, number_of_bytes):
-    return integer.to_bytes(number_of_bytes, byteorder="big", signed=False)
-
-def hex_to_bytes(hexadecimal, number_of_bytes):
-    hexadecimal_joined = "".join([x.zfill(4) for x in hexadecimal.split(":")])
-    integer = int(hexadecimal_joined, 16)
-    return int_to_bytes(integer, number_of_bytes)
+# IO circular queues
+out_q = collections.deque(maxlen=None)
+in_qs = {} # map of queues
 
 
-def send(locator, identifier, data):
+def _send(locator, identifier, data):
     # TODO add address resolution and forwarding table
     # (locator -> interface, where an interface is a multicast group)
     interface = link.get_mcast_grp(locator, link.PackageType.DATA_PACKAGE)
@@ -105,7 +86,7 @@ def send(locator, identifier, data):
     link.send(interface, message)
 
 
-def receive():
+def _receive():
     package_type, message = link.receive()
 
     header = message[:40] # Header is 40 bytes
@@ -127,7 +108,6 @@ def receive():
     #flow_label    = (masked_fields & FLOW_LABEL_MASK)    >> FLOW_LABEL_SHIFT
 
     dst_identifier = bytes_to_hex(dst_identifier_bytes)
-    print(dst_identifier)
     if (dst_identifier != local_identifier and
         dst_identifier != MCAST_IDENTIFIER):
         return
@@ -138,8 +118,49 @@ def receive():
     src_locator    = bytes_to_hex(src_locator_bytes)
     dst_locator    = bytes_to_hex(dst_locator_bytes)
     data = message[40:]
-    # TODO queue based on next_header
-    return data, src_locator, src_identifier, dst_locator, dst_identifier
+    return next_header, package_type, (
+        data, src_locator, src_identifier, dst_locator, dst_identifier
+    )
+
+
+class ReceiveThread(threading.Thread):
+    def run(self):
+        # Queues by next header
+        while True:
+            received = _receive()
+            if received == None:
+                continue
+            next_header, package_type, result = received
+            # TODO process control packages
+            if package_type == link.PackageType.DATA_PACKAGE:
+                in_qs.setdefault(
+                    next_header, collections.deque(maxlen=None)
+                ).append(result)
+
+
+def receive(next_header):
+    # Raises IndexError if no elements present
+    try:
+        return in_qs[next_header].popleft()
+    except IndexError:
+        raise NetworkException("Input queue empty for next header: %d" % next_header)
+    except KeyError:
+        raise NetworkException("Invalid next")
+
+
+class SendThread(threading.Thread):
+    def run(self):
+        while True:
+            try:
+                _send(*out_q.popleft())
+            except IndexError:
+                # TODO wait here?
+                continue
+
+
+def send(locator, identifier, data):
+    # note if maxlen set this will overwrite the oldest value
+    return out_q.append((locator, identifier, data))
 
 
 def startup():
@@ -171,6 +192,10 @@ def startup():
         local_identifier = bytes_to_hex(secrets.token_bytes(8))
     # TODO add collision detection
     local_locator = locators_joined[0]
+    receive_thread = ReceiveThread()
+    receive_thread.start()
+    send_thread = SendThread()
+    send_thread.start()
 
 
 startup()
