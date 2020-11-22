@@ -1,2 +1,2 @@
 *.log
-*.ini
+__pycache__
