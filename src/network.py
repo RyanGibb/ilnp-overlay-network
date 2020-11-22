@@ -41,6 +41,36 @@ out_queue = collections.deque(maxlen=None)
 in_queues = {} # map of queues
 
 
+class PackageType():
+    DATA_PACKAGE = 0
+    CONTROL_PACKAGE = 1
+
+
+# package_type should be PackageType.DATA_PACKAGE or PackageType.CONTROL_PACKAGE
+# loc should be a 64 bit hex string
+def get_mcast_grp(loc, package_type):
+    # 16 bit hex representation of package type (modulo 2^16)
+    package_type_hex = format(package_type % 65536, "x")
+    # Multicast group address is of the form:
+    # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    # |        Multicast Prefix       |         Package Type          |
+    # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    # |                            User ID                            |
+    # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    # |                                                               |
+    # +                              Loc                              +
+    # |                                                               |
+    # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    return "%s:%s:%s:%s:%s%%%s" % (
+        mcast_prefix,
+        package_type_hex,
+        uid_hex_upper,
+        uid_hex_lower,
+        loc,
+        mcast_interface
+    )
+
+
 def _send(loc, nid, data):
     # TODO add address resolution and forwarding table
     # (loc -> interface, where an interface is a multicast group)
@@ -87,7 +117,10 @@ def _send(loc, nid, data):
 
 
 def _receive():
-    package_type, message = link.receive()
+    to_address, message = link.receive()
+
+    # Exctract packet type from multicast group
+    package_type = int.from_bytes(to_address[2:4], byteorder="big")
 
     header = message[:40] # Header is 40 bytes
     (
@@ -164,6 +197,14 @@ def send(loc, nid, data):
 
 
 def startup():
+    # 32 bit hex representation of user ID (modulo 2^32)
+    global uid_hex_upper, uid_hex_lower
+    uid_hex = format(os.getuid() % 4294967296, "x")
+    uid_hex_upper = uid_hex[:-4]
+    if uid_hex_upper == "":
+        uid_hex_upper = "0"
+    uid_hex_lower = uid_hex[-4:]
+    
     # Read configuration file
     global locs_joined, local_id, local_loc
     filepath = os.path.join(os.path.dirname(__file__), "..", CONFIG_FILENAME)

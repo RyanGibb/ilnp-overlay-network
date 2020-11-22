@@ -17,36 +17,6 @@ buffer_size = 1024
 joined_mcast_grps = set()
 
 
-class PackageType():
-    DATA_PACKAGE = 0
-    CONTROL_PACKAGE = 1
-
-
-# package_type should be PackageType.DATA_PACKAGE or PackageType.CONTROL_PACKAGE
-# loc should be a 64 bit hex string
-def get_mcast_grp(loc, package_type):
-    # 16 bit hex representation of package type (modulo 2^16)
-    package_type_hex = format(package_type % 65536, "x")
-    # Multicast group address is of the form:
-    # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    # |        Multicast Prefix       |         Package Type          |
-    # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    # |                            User ID                            |
-    # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    # |                                                               |
-    # +                              Loc                              +
-    # |                                                               |
-    # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    return "%s:%s:%s:%s:%s%%%s" % (
-        mcast_prefix,
-        package_type_hex,
-        uid_hex_upper,
-        uid_hex_lower,
-        loc,
-        mcast_interface
-    )
-
-
 def send(mcast_grp, message):
     if mcast_grp not in joined_mcast_grps:
         raise IOError("Not joined multicast group '%s'" % mcast_grp)
@@ -107,10 +77,7 @@ def receive():
         (socket.NI_NUMERICHOST | socket.NI_NUMERICSERV)
     )
 
-    # Exctract packet type from multicast group
-    package_type = int.from_bytes(to_address[2:4], byteorder="big")
-
-    return package_type, message
+    return to_address, message
 
 
 def startup():
@@ -142,13 +109,7 @@ def startup():
                 sys.exit(-1)
     config_file.close()
 
-    # 32 bit hex representation of user ID (modulo 2^32)
-    global uid_hex_upper, uid_hex_lower
-    uid_hex = format(os.getuid() % 4294967296, "x")
-    uid_hex_upper = uid_hex[:-4]
-    if uid_hex_upper == "":
-        uid_hex_upper = "0"
-    uid_hex_lower = uid_hex[-4:]
+    
 
     # Create a datagram (UDP) socket
     global sock
