@@ -39,6 +39,12 @@ class Socket:
         header = struct.pack("!2s", util.int_to_bytes(self.port, 2))
         message = header + data
         network.send(loc, nid, message)
+        if log_file != None:
+            util.write_log(log_file, "%-60s <- %-60s %s" % (
+                "[%s]:%d" % (self.addr, self.port),
+                "%s:%s" % (network.local_loc, network.local_nid),
+                data
+            ))
 
     def receive(self):
         try:
@@ -65,6 +71,7 @@ class ReceiveThread(threading.Thread):
                 continue
             header = message[:2]
             port_bytes = struct.unpack("!2s", header)[0]
+            # TODO make local port different from report port
             port = util.bytes_to_int(port_bytes)
             data = message[2:]
             # TODO make mcast not broadcast and horribly hacky
@@ -80,6 +87,13 @@ class ReceiveThread(threading.Thread):
                 (src_addr, port), collections.deque(maxlen=None)
             ).append(data)
 
+            if log_file != None:
+                util.write_log(log_file, "%-60s -> %-60s %s" % (
+                    src_addr,
+                    "[%s:%s]:%d" % (dst_loc, dst_nid, port),
+                    data
+                ))
+
 
 def startup():
     config_section = util.config["transport"]
@@ -87,6 +101,9 @@ def startup():
     if "log" in config_section and config_section.getboolean("log"):
         log_filepath = util.get_log_file_path("transport")
         log_file = open(log_filepath, "a")
+        util.write_log(log_file, "Started")
+        for k in config_section:
+            util.write_log(log_file, "\t%s = %s" % (k, config_section[k]))
     else:
         log_file = None
     

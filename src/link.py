@@ -21,6 +21,13 @@ def send(mcast_grp, message):
         )
     sock.sendto(message, sockaddr)
 
+    if log_file != None:
+        util.write_log(log_file, "%-60s <- %-60s %s" % (
+            "[%s]:%d" % (mcast_grp, mcast_port),
+            "[%s]:%d" % (local_addr, mcast_port),
+            message
+        ))
+
 
 def join(mcast_grp):
     if mcast_grp in joined_mcast_grps:
@@ -45,6 +52,9 @@ def join(mcast_grp):
 
     joined_mcast_grps.add(mcast_grp)
 
+    if log_file != None:
+        util.write_log(log_file, ("Joined %s" % mcast_grp))
+
 
 def receive():
     # buffer_size byte buffer and therefor max message size
@@ -67,6 +77,12 @@ def receive():
         (socket.NI_NUMERICHOST | socket.NI_NUMERICSERV)
     )
 
+    if log_file != None:
+        util.write_log(log_file, "%-60s -> %-60s %s" % (
+            "[%s]:%s" % (from_ip, from_port),
+            "[%s]:%d" % (util.bytes_to_hex(to_address), mcast_port),
+            message
+        ))
     return to_address, message
 
 
@@ -89,11 +105,17 @@ def startup():
     sock.bind(('', mcast_port))
     # Set the delivery of IPV6_PKTINFO control message on incoming datagrams
     sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_RECVPKTINFO, 1)
+
+    global local_addr
+    local_addr = socket.gethostbyname(socket.gethostname())
     
     global log_file
     if "log" in config_section and config_section.getboolean("log"):
         log_filepath = util.get_log_file_path("link")
         log_file = open(log_filepath, "a")
+        util.write_log(log_file, "Started")
+        for k in config_section:
+            util.write_log(log_file, "\t%s = %s" % (k, config_section[k]))
     else:
         log_file = None
 

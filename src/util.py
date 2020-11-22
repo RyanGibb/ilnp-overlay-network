@@ -2,6 +2,7 @@ import os
 import socket
 import configparser
 from pathlib import Path
+from datetime import datetime
 
 CONFIG_FILENAME = "config.ini"
 
@@ -49,6 +50,11 @@ def get_log_file_path(log_type):
     )
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def write_log(log_file, message):
+    log_file.write("%s %s\n" % (datetime.now(), message))
+    log_file.flush()
 
 
 def startup():

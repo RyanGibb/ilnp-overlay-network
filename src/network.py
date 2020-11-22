@@ -118,11 +118,18 @@ def _send(loc, nid, data):
     message = header + data
     link.send(interface, message)
 
+    if log_file != None:
+        util.write_log(log_file, "%-60s <- %-60s %s" % (
+            ":".join([loc, nid]),
+            ":".join([local_loc, local_nid]),
+            data
+        ))
+
 
 def _receive():
     to_address, message = link.receive()
-
-    # Exctract packet type from multicast group
+    
+    # Extract packet type from multicast group
     package_type = int.from_bytes(to_address[2:4], byteorder="big")
 
     header = message[:40] # Header is 40 bytes
@@ -154,6 +161,14 @@ def _receive():
     src_loc        = util.bytes_to_hex(src_loc_bytes)
     dst_loc        = util.bytes_to_hex(dst_loc_bytes)
     data = message[40:]
+
+    if log_file != None:
+        util.write_log(log_file, "%-60s -> %-60s %s" % (
+            ":".join([src_loc, src_nid]),
+            ":".join([dst_loc, dst_nid]),
+            data
+        ))
+    
     return next_header, package_type, (
         data, src_loc, src_nid, dst_loc, dst_nid
     )
@@ -221,6 +236,9 @@ def startup():
     if "log" in config_section and config_section.getboolean("log"):
         log_filepath = util.get_log_file_path("network")
         log_file = open(log_filepath, "a")
+        util.write_log(log_file, "Started")
+        for k in config_section:
+            util.write_log(log_file, "\t%s = %s" % (k, config_section[k]))
     else:
         log_file = None
     
