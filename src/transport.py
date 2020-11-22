@@ -8,70 +8,61 @@ import network
 import util
 from util import NetworkException
 
-# TODO add port number for multiplexing
-# TODO add socket object to keep track of state like port and buffers
+PROTOCOL_NEXT_HEADER = 42
 
-next_header = 42
-
-# IO circular queues
-in_qs = {} # map of queues
+# Map of input circular queues indexed by local port
+in_queues = {}
 
 
 class Socket:
-    # remote addr and port
-    def __init__(self, addr, port):
-        # here addr represents a ILV (Identfier-Locator Vector)
-        self.addr = addr
+    # Bind the socket to a port to receive 
+    def bind(self, port):
+        if port in in_queues:
+            raise NetworkException("Port %d already bound" % port)
+        in_queue = collections.deque(maxlen=None)
+        in_queues[port] = in_queue
         self.port = port
-        if (addr, port) in in_qs:
-            raise NetworkException(
-                "Socket to this remote [%s]:%d already exists" % (addr, port)
-            )
-        in_q = collections.deque(maxlen=None)
-        in_qs[(addr, port)] = in_q
-        self.in_q = in_q
-        # UDP-like protocol, so no handshake
+        self.in_queue = in_queue
     
-    def send(self, data):
-        loc = ":".join(self.addr.split(":")[:4])
-        nid = ":".join(self.addr.split(":")[4:])
-        # Transport header is simply a 16bit port
-        header = struct.pack("!2s", util.int_to_bytes(self.port, 2))
+    def send(self, remote, data):
+        # remote_addr is an ILV (Identfier-Locator Vector)
+        remote_addr, remote_port = remote
+        remote_addr_split = remote_addr.split(":")
+        loc = ":".join(remote_addr_split[:4])
+        nid = ":".join(remote_addr_split[4:])
+        # Transport header is just a 16 bit port
+        header = struct.pack("!2s", util.int_to_bytes(remote_port, 2))
         message = header + data
         network.send(loc, nid, message)
         if log_file != None:
             util.write_log(log_file, "%-60s <- %-60s %s" % (
-                "[%s]:%d" % (self.addr, self.port),
+                "[%s]:%d" % remote,
                 "%s:%s" % (network.local_loc, network.local_nid),
                 data
             ))
 
     def receive(self):
         try:
-            return self.in_q.popleft()
+            return self.in_queue.popleft()
         except IndexError:
-            raise NetworkException(
-                "No recived packets from [%s]:%d" % (self.addr, self.port)
-            )
+            raise NetworkException("No packets for port %d" % self.port)
 
 
 class ReceiveThread(threading.Thread):
     def run(self):
-        # Queue by src addr and port
         while True:
             try:
                 (
                     message, 
                     src_loc, src_nid,
                     dst_loc, dst_nid
-                ) = network.receive(next_header)
+                ) = network.receive(PROTOCOL_NEXT_HEADER)
             except NetworkException:
                 # TODO wait here?
                 time.sleep(1)
                 continue
             header = message[:2]
             port_bytes = struct.unpack("!2s", header)[0]
-            # TODO make local port different from report port
             port = util.bytes_to_int(port_bytes)
             data = message[2:]
             # TODO make mcast not broadcast and horribly hacky
@@ -79,12 +70,12 @@ class ReceiveThread(threading.Thread):
                 src_addr = ":".join([dst_loc, dst_nid])
             else:
                 src_addr = ":".join([src_loc, src_nid])
-            # drop if not valid remote (i.e. there is no coresponding socket)
-            if (src_addr, port) not in in_qs:
+            # drop if not valid port (if there's no socket bound to this port)
+            if port not in in_queues:
                 continue
-            # TODO do something with dst like support mcase
-            in_qs.setdefault(
-                (src_addr, port), collections.deque(maxlen=None)
+            # TODO do something with dst like support mcast
+            in_queues.setdefault(
+                port, collections.deque(maxlen=None)
             ).append(data)
 
             if log_file != None:

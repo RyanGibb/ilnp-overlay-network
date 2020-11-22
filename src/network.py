@@ -31,9 +31,10 @@ STATIC_MASKS_FIELD = (
 # nid used for multicasting over overlay network
 MCAST_NID = 'ff12:0:0:0'
 
-# IO circular queues
+# Output circular queues
 out_queue = collections.deque(maxlen=None)
-in_queues = {} # map of queues
+# Map of input circular queues indexed by next header
+in_queues = {}
 
 
 class PackageType():

@@ -8,12 +8,13 @@ ADDR = ":".join([LOC, transport.network.MCAST_NID])
 PORT = 1000
 
 def heartbeat():
-    sock = transport.Socket(ADDR, PORT)
+    sock = transport.Socket()
+    sock.bind(PORT)
     remote_string = "[%s]:%d" % (ADDR, PORT)
     while True:
         message = "%s | %s" % (str(datetime.now()), transport.network.local_nid)
         try:
-            sock.send(message.encode('utf-8'))
+            sock.send((ADDR, PORT), message.encode('utf-8'))
         except transport.NetworkException as e:
             print("Network Exception: %s" % e.message)
         print("%-60s <- %s" % (remote_string, message))
@@ -22,7 +23,6 @@ def heartbeat():
                 message = sock.receive()
                 print("%-60s -> %s" % (remote_string, message.decode('utf-8')))
             except transport.NetworkException as e:
-                print("Network Exception: %s" % e.message)
                 break
         time.sleep(1)
 
