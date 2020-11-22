@@ -2,9 +2,11 @@ import struct
 import collections
 import threading
 import time
+import os
 
 import network
-from util import *
+import util
+from util import NetworkException
 
 # TODO add port number for multiplexing
 # TODO add socket object to keep track of state like port and buffers
@@ -34,7 +36,7 @@ class Socket:
         loc = ":".join(self.addr.split(":")[:4])
         nid = ":".join(self.addr.split(":")[4:])
         # Transport header is simply a 16bit port
-        header = struct.pack("!2s", int_to_bytes(self.port, 2))
+        header = struct.pack("!2s", util.int_to_bytes(self.port, 2))
         message = header + data
         network.send(loc, nid, message)
 
@@ -63,7 +65,7 @@ class ReceiveThread(threading.Thread):
                 continue
             header = message[:2]
             port_bytes = struct.unpack("!2s", header)[0]
-            port = bytes_to_int(port_bytes)
+            port = util.bytes_to_int(port_bytes)
             data = message[2:]
             # TODO make mcast not broadcast and horribly hacky
             if dst_nid == network.MCAST_NID:
@@ -80,8 +82,15 @@ class ReceiveThread(threading.Thread):
 
 
 def startup():
-    receive_thread = ReceiveThread()
-    receive_thread.start()
+    config_section = util.config["transport"]
+    global log_file
+    if "log" in config_section and config_section.getboolean("log"):
+        log_filepath = util.get_log_file_path("transport")
+        log_file = open(log_filepath, "a")
+    else:
+        log_file = None
+    
+    ReceiveThread().start()
 
 
 startup()

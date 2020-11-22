@@ -1,13 +1,8 @@
 import socket
 import struct
-import sys
 import os
-from enum import Enum
 
-CONFIG_FILENAME = "link_config.cnf"
-mcast_port = 10000
-mcast_interface = "eth0"
-buffer_size = 1024
+import util
 
 joined_mcast_grps = set()
 
@@ -76,35 +71,12 @@ def receive():
 
 
 def startup():
-    # Read configuration file
-    global mcast_port, mcast_interface, buffer_size
-    config_file = open(os.path.join(os.path.dirname(__file__), "..", CONFIG_FILENAME), "r")
-    for line in config_file:
-        line = line.strip()
-        if len(line) == 0 or line[0] == '#':
-            continue
-        line_split = line.split(":", 1)
-        if len(line_split) != 2:
-            continue
-        name, value = line_split
-        value = value.split("#")[0].strip()
-        if name == "MCAST_PORT":
-            try:
-                mcast_port = int(value)
-            except ValueError as err:
-                print("Error parsing MCAST_PORT from %s: %s" % (CONFIG_FILENAME, err))
-                sys.exit(-1)
-        elif name == "MCAST_INTERFACE":
-            mcast_interface = value
-        elif name == "BUFFER_SIZE":
-            try:
-                buffer_size = int(value)
-            except ValueError as err:
-                print("Error parsing BUFFER_SIZE from %s: %s" % (CONFIG_FILENAME, err))
-                sys.exit(-1)
-    config_file.close()
-
+    config_section = util.config["link"]
     
+    global mcast_port, mcast_interface, buffer_size
+    mcast_port      = config_section.getint("mcast_port")
+    mcast_interface = config_section["mcast_interface"]
+    buffer_size     = config_section.getint("buffer_size")
 
     # Create a datagram (UDP) socket
     global sock
@@ -117,6 +89,15 @@ def startup():
     sock.bind(('', mcast_port))
     # Set the delivery of IPV6_PKTINFO control message on incoming datagrams
     sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_RECVPKTINFO, 1)
+    
+    global log_file
+    if "log" in config_section and config_section.getboolean("log"):
+        log_filepath = util.get_log_file_path("link")
+        log_file = open(log_filepath, "a")
+    else:
+        log_file = None
+
 
 
 startup()
+

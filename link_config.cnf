@@ -1,5 +1,0 @@
-
-# Local UDP multicast link layer emulation configuration
-MCAST_PORT:         10000
-MCAST_INTERFACE:    eth0
-BUFFER_SIZE:        65487  # 2^16 (16 bytes for payload length in header) - 49 (for UDP link layer headers)

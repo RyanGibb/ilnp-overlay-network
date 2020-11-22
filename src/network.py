@@ -3,11 +3,11 @@ import os
 import secrets
 import collections
 import threading
+import os
 
 import link
-from util import *
-
-CONFIG_FILENAME = "network_config.cnf"
+import util
+from util import NetworkException
 
 VERSION_SHIFT       = 28
 TRAFFIC_CLASS_SHIFT = 20
@@ -30,11 +30,6 @@ STATIC_MASKS_FIELD = (
 
 # nid used for multicasting over overlay network
 MCAST_NID = 'ff12:0:0:0'
-
-locs_joined = []
-
-local_nid = None
-local_loc = None
 
 # IO circular queues
 out_queue = collections.deque(maxlen=None)
@@ -70,19 +65,19 @@ def get_mcast_grp(loc, package_type):
     # +                              Loc                              +
     # |                                                               |
     # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    return "%s:0:%s:%s:%s:%s%%%s" % (
+    return "%s:0:%s:%s:%s%%%s" % (
         mcast_prefix,
         package_type_hex,
         uid_hex,
         loc,
-        mcast_interface
+        link.mcast_interface
     )
 
 
 def _send(loc, nid, data):
     # TODO add address resolution and forwarding table
     # (loc -> interface, where an interface is a multicast group)
-    interface = link.get_mcast_grp(loc, link.PackageType.DATA_PACKAGE)
+    interface = get_mcast_grp(loc, PackageType.DATA_PACKAGE)
 
     # ILNPv6 header is of the form:
     # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -111,13 +106,13 @@ def _send(loc, nid, data):
     hop_limit   = 0 # TODO set
     header = struct.pack("!4s2sss8s8s8s8s",
         STATIC_MASKS_FIELD.to_bytes(4, byteorder="big", signed=False),
-        int_to_bytes(payload_length, 2),
-        int_to_bytes(next_header,   1),
-        int_to_bytes(hop_limit,     1),
-        hex_to_bytes(local_loc,     8),
-        hex_to_bytes(local_nid,      8),
-        hex_to_bytes(loc,           8),
-        hex_to_bytes(nid,            8),
+        util.int_to_bytes(payload_length, 2),
+        util.int_to_bytes(next_header,   1),
+        util.int_to_bytes(hop_limit,     1),
+        util.hex_to_bytes(local_loc,     8),
+        util.hex_to_bytes(local_nid,      8),
+        util.hex_to_bytes(loc,           8),
+        util.hex_to_bytes(nid,            8),
     )
 
     message = header + data
@@ -148,16 +143,16 @@ def _receive():
     #traffic_class = (masked_fields & TRAFFIC_CLASS_MASK) >> TRAFFIC_CLASS_SHIFT
     #flow_label    = (masked_fields & FLOW_LABEL_MASK)    >> FLOW_LABEL_SHIFT
 
-    dst_nid = bytes_to_hex(dst_nid_bytes)
+    dst_nid = util.bytes_to_hex(dst_nid_bytes)
     if (dst_nid != local_nid and
         dst_nid != MCAST_NID):
         return
-    payload_length = bytes_to_int(payload_length_bytes)
-    next_header    = bytes_to_int(next_header_bytes)
-    hop_limit      = bytes_to_int(hop_limit_bytes)
-    src_nid = bytes_to_hex(src_nid_bytes)
-    src_loc    = bytes_to_hex(src_loc_bytes)
-    dst_loc    = bytes_to_hex(dst_loc_bytes)
+    payload_length = util.bytes_to_int(payload_length_bytes)
+    next_header    = util.bytes_to_int(next_header_bytes)
+    hop_limit      = util.bytes_to_int(hop_limit_bytes)
+    src_nid        = util.bytes_to_hex(src_nid_bytes)
+    src_loc        = util.bytes_to_hex(src_loc_bytes)
+    dst_loc        = util.bytes_to_hex(dst_loc_bytes)
     data = message[40:]
     return next_header, package_type, (
         data, src_loc, src_nid, dst_loc, dst_nid
@@ -173,7 +168,7 @@ class ReceiveThread(threading.Thread):
                 continue
             next_header, package_type, result = received
             # TODO process control packages
-            if package_type == link.PackageType.DATA_PACKAGE:
+            if package_type == PackageType.DATA_PACKAGE:
                 in_queues.setdefault(
                     next_header, collections.deque(maxlen=None)
                 ).append(result)
@@ -205,38 +200,39 @@ def send(loc, nid, data):
 
 
 def startup():
-    # Read configuration file
-    global locs_joined, local_id, local_loc
-    filepath = os.path.join(os.path.dirname(__file__), "..", CONFIG_FILENAME)
-    config_file = open(filepath, "r")
-    for line in config_file:
-        line = line.strip()
-        if len(line) == 0 or line[0] == '#':
-            continue
-        line_split = line.split(":", 1)
-        if len(line_split) != 2:
-            continue
-        name, value = line_split
-        value = value.split("#")[0].strip()
-        if name == "LOCATOR":
-            locs_joined.append(value)
-        elif name == "LOCAL_NID":
-            local_nid = value
-    config_file.close()
-
-    for loc in locs_joined:
-        link.join(link.get_mcast_grp(loc, link.PackageType.CONTROL_PACKAGE))
-        link.join(link.get_mcast_grp(loc, link.PackageType.DATA_PACKAGE))
+    config_section = util.config["network"]
     
-    # TODO improve assignement
-    if local_nid == None:
-        local_nid = bytes_to_hex(secrets.token_bytes(8))
-    # TODO add collision detection
+    global locs_joined, local_loc
+    locs_joined = [loc.strip() for loc in config_section["locators"].split(",")]
+    for loc in locs_joined:
+        link.join(get_mcast_grp(loc, PackageType.CONTROL_PACKAGE))
+        link.join(get_mcast_grp(loc, PackageType.DATA_PACKAGE))
     local_loc = locs_joined[0]
-    receive_thread = ReceiveThread()
-    receive_thread.start()
-    send_thread = SendThread()
-    send_thread.start()
+
+    global local_nid
+    if "local_nid" in config_section:
+        local_nid = config_section["local_nid"]
+    else:
+        # TODO improve assignement
+        local_nid = util.bytes_to_hex(secrets.token_bytes(8))
+    # TODO add collision detection
+
+    global log_file
+    if "log" in config_section and config_section.getboolean("log"):
+        log_filepath = util.get_log_file_path("network")
+        log_file = open(log_filepath, "a")
+    else:
+        log_file = None
+    
+    ReceiveThread().start()
+    SendThread().start()
 
 
 startup()
+
+
+
+
+
+
+    
