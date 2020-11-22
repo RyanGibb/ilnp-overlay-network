@@ -4,11 +4,6 @@ import sys
 import os
 from enum import Enum
 
-# Must have prefix ff00::/8 for multicast.
-# The next 4 bits are flags. Transient/non-perminant is denoted by 1.
-# The final 4 bits are for the scope. Link-local is denoted by 2.
-mcast_prefix = "ff12"
-
 CONFIG_FILENAME = "link_config.cnf"
 mcast_port = 10000
 mcast_interface = "eth0"

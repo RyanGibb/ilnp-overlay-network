@@ -51,21 +51,29 @@ class PackageType():
 def get_mcast_grp(loc, package_type):
     # 16 bit hex representation of package type (modulo 2^16)
     package_type_hex = format(package_type % 65536, "x")
+    
+    # 32 bit hex representation of user ID (modulo 2^16)
+    uid_hex = format(os.getuid() % 65536, "x")
+
+    # Must have prefix ff00::/8 for multicast.
+    # The next 4 bits are flags. Transient/non-perminant is denoted by 1.
+    # The final 4 bits are for the scope. Link-local is denoted by 2.
+    mcast_prefix = "ff12"
+
     # Multicast group address is of the form:
     # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    # |        Multicast Prefix       |         Package Type          |
+    # |        Multicast Prefix       |             UNUSED            |
     # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    # |                            User ID                            |
+    # |         Package Type          |            User ID            |
     # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     # |                                                               |
     # +                              Loc                              +
     # |                                                               |
     # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    return "%s:%s:%s:%s:%s%%%s" % (
+    return "%s:0:%s:%s:%s:%s%%%s" % (
         mcast_prefix,
         package_type_hex,
-        uid_hex_upper,
-        uid_hex_lower,
+        uid_hex,
         loc,
         mcast_interface
     )
@@ -197,14 +205,6 @@ def send(loc, nid, data):
 
 
 def startup():
-    # 32 bit hex representation of user ID (modulo 2^32)
-    global uid_hex_upper, uid_hex_lower
-    uid_hex = format(os.getuid() % 4294967296, "x")
-    uid_hex_upper = uid_hex[:-4]
-    if uid_hex_upper == "":
-        uid_hex_upper = "0"
-    uid_hex_lower = uid_hex[-4:]
-    
     # Read configuration file
     global locs_joined, local_id, local_loc
     filepath = os.path.join(os.path.dirname(__file__), "..", CONFIG_FILENAME)
