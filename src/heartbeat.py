@@ -3,15 +3,15 @@ from datetime import datetime
 
 import transport
 
-LOCATOR = "0:0:0:1"
-ADDR    = ":".join([LOCATOR, transport.network.MCAST_IDENTIFIER])
-PORT    = 1000
+LOC  = "0:0:0:1"
+ADDR = ":".join([LOC, transport.network.MCAST_NID])
+PORT = 1000
 
 def heartbeat():
     sock = transport.Socket(ADDR, PORT)
     remote_string = "[%s]:%d" % (ADDR, PORT)
     while True:
-        message = "%s | %s" % (str(datetime.now()), transport.network.local_identifier)
+        message = "%s | %s" % (str(datetime.now()), transport.network.local_nid)
         try:
             sock.send(message.encode('utf-8'))
         except transport.NetworkException as e:

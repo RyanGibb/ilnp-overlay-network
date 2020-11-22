@@ -23,8 +23,8 @@ class PackageType():
 
 
 # package_type should be PackageType.DATA_PACKAGE or PackageType.CONTROL_PACKAGE
-# locator should be a 64 bit hex string
-def get_mcast_grp(locator, package_type):
+# loc should be a 64 bit hex string
+def get_mcast_grp(loc, package_type):
     # 16 bit hex representation of package type (modulo 2^16)
     package_type_hex = format(package_type % 65536, "x")
     # Multicast group address is of the form:
@@ -34,7 +34,7 @@ def get_mcast_grp(locator, package_type):
     # |                            User ID                            |
     # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     # |                                                               |
-    # +                            Locator                            +
+    # +                              Loc                              +
     # |                                                               |
     # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     return "%s:%s:%s:%s:%s%%%s" % (
@@ -42,7 +42,7 @@ def get_mcast_grp(locator, package_type):
         package_type_hex,
         uid_hex_upper,
         uid_hex_lower,
-        locator,
+        loc,
         mcast_interface
     )
 

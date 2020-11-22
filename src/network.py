@@ -28,23 +28,23 @@ STATIC_MASKS_FIELD = (
     FLOW_LABEL      << FLOW_LABEL_SHIFT
 )
 
-# identifier used for multicasting over overlay network
-MCAST_IDENTIFIER = 'ff12:0:0:0'
+# nid used for multicasting over overlay network
+MCAST_NID = 'ff12:0:0:0'
 
-locators_joined = []
+locs_joined = []
 
-local_identifier = None
-local_locator    = None
+local_nid = None
+local_loc = None
 
 # IO circular queues
-out_q = collections.deque(maxlen=None)
-in_qs = {} # map of queues
+out_queue = collections.deque(maxlen=None)
+in_queues = {} # map of queues
 
 
-def _send(locator, identifier, data):
+def _send(loc, nid, data):
     # TODO add address resolution and forwarding table
-    # (locator -> interface, where an interface is a multicast group)
-    interface = link.get_mcast_grp(locator, link.PackageType.DATA_PACKAGE)
+    # (loc -> interface, where an interface is a multicast group)
+    interface = link.get_mcast_grp(loc, link.PackageType.DATA_PACKAGE)
 
     # ILNPv6 header is of the form:
     # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -53,19 +53,19 @@ def _send(locator, identifier, data):
     # |         Payload Length        |  Next Header  |   Hop Limit   |
     # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     # |                                                               |
-    # +                         Source Locator                        +
+    # +                           Source Loc                          +
     # |                                                               |
     # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     # |                                                               |
-    # +                       Source Identifier                       +
+    # +                           Source NID                          +
     # |                                                               |
     # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     # |                                                               |
-    # +                      Destination Locator                      +
+    # +                        Destination Loc                        +
     # |                                                               |
     # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     # |                                                               |
-    # +                     Destination Identifier                    +
+    # +                        Destination NID                        +
     # |                                                               |
     # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     next_header = 42 # identifies skinny transport layer
@@ -73,13 +73,13 @@ def _send(locator, identifier, data):
     hop_limit   = 0 # TODO set
     header = struct.pack("!4s2sss8s8s8s8s",
         STATIC_MASKS_FIELD.to_bytes(4, byteorder="big", signed=False),
-        int_to_bytes(payload_length,    2),
-        int_to_bytes(next_header,       1),
-        int_to_bytes(hop_limit,         1),
-        hex_to_bytes(local_locator,     8),
-        hex_to_bytes(local_identifier,  8),
-        hex_to_bytes(locator,           8),
-        hex_to_bytes(identifier,        8),
+        int_to_bytes(payload_length, 2),
+        int_to_bytes(next_header,   1),
+        int_to_bytes(hop_limit,     1),
+        hex_to_bytes(local_loc,     8),
+        hex_to_bytes(local_nid,      8),
+        hex_to_bytes(loc,           8),
+        hex_to_bytes(nid,            8),
     )
 
     message = header + data
@@ -95,10 +95,10 @@ def _receive():
         payload_length_bytes,
         next_header_bytes,
         hop_limit_bytes,
-        src_locator_bytes,
-        src_identifier_bytes,
-        dst_locator_bytes,
-        dst_identifier_bytes,
+        src_loc_bytes,
+        src_nid_bytes,
+        dst_loc_bytes,
+        dst_nid_bytes,
     ) = struct.unpack("!4s2sss8s8s8s8s", header)
     
     # Not currently used
@@ -107,19 +107,19 @@ def _receive():
     #traffic_class = (masked_fields & TRAFFIC_CLASS_MASK) >> TRAFFIC_CLASS_SHIFT
     #flow_label    = (masked_fields & FLOW_LABEL_MASK)    >> FLOW_LABEL_SHIFT
 
-    dst_identifier = bytes_to_hex(dst_identifier_bytes)
-    if (dst_identifier != local_identifier and
-        dst_identifier != MCAST_IDENTIFIER):
+    dst_nid = bytes_to_hex(dst_nid_bytes)
+    if (dst_nid != local_nid and
+        dst_nid != MCAST_NID):
         return
     payload_length = bytes_to_int(payload_length_bytes)
     next_header    = bytes_to_int(next_header_bytes)
     hop_limit      = bytes_to_int(hop_limit_bytes)
-    src_identifier = bytes_to_hex(src_identifier_bytes)
-    src_locator    = bytes_to_hex(src_locator_bytes)
-    dst_locator    = bytes_to_hex(dst_locator_bytes)
+    src_nid = bytes_to_hex(src_nid_bytes)
+    src_loc    = bytes_to_hex(src_loc_bytes)
+    dst_loc    = bytes_to_hex(dst_loc_bytes)
     data = message[40:]
     return next_header, package_type, (
-        data, src_locator, src_identifier, dst_locator, dst_identifier
+        data, src_loc, src_nid, dst_loc, dst_nid
     )
 
 
@@ -133,7 +133,7 @@ class ReceiveThread(threading.Thread):
             next_header, package_type, result = received
             # TODO process control packages
             if package_type == link.PackageType.DATA_PACKAGE:
-                in_qs.setdefault(
+                in_queues.setdefault(
                     next_header, collections.deque(maxlen=None)
                 ).append(result)
 
@@ -141,7 +141,7 @@ class ReceiveThread(threading.Thread):
 def receive(next_header):
     # Raises IndexError if no elements present
     try:
-        return in_qs[next_header].popleft()
+        return in_queues[next_header].popleft()
     except IndexError:
         raise NetworkException("Input queue empty for next header: %d" % next_header)
     except KeyError:
@@ -152,20 +152,20 @@ class SendThread(threading.Thread):
     def run(self):
         while True:
             try:
-                _send(*out_q.popleft())
+                _send(*out_queue.popleft())
             except IndexError:
                 # TODO wait here?
                 continue
 
 
-def send(locator, identifier, data):
+def send(loc, nid, data):
     # note if maxlen set this will overwrite the oldest value
-    return out_q.append((locator, identifier, data))
+    return out_queue.append((loc, nid, data))
 
 
 def startup():
     # Read configuration file
-    global locators_joined, local_identifier, local_locator
+    global locs_joined, local_id, local_loc
     filepath = os.path.join(os.path.dirname(__file__), "..", CONFIG_FILENAME)
     config_file = open(filepath, "r")
     for line in config_file:
@@ -178,20 +178,20 @@ def startup():
         name, value = line_split
         value = value.split("#")[0].strip()
         if name == "LOCATOR":
-            locators_joined.append(value)
-        elif name == "LOCAL_IDENTIFIER":
-            local_identifier = value
+            locs_joined.append(value)
+        elif name == "LOCAL_NID":
+            local_nid = value
     config_file.close()
 
-    for locator in locators_joined:
-        link.join(link.get_mcast_grp(locator, link.PackageType.CONTROL_PACKAGE))
-        link.join(link.get_mcast_grp(locator, link.PackageType.DATA_PACKAGE))
+    for loc in locs_joined:
+        link.join(link.get_mcast_grp(loc, link.PackageType.CONTROL_PACKAGE))
+        link.join(link.get_mcast_grp(loc, link.PackageType.DATA_PACKAGE))
     
     # TODO improve assignement
-    if local_identifier == None:
-        local_identifier = bytes_to_hex(secrets.token_bytes(8))
+    if local_nid == None:
+        local_nid = bytes_to_hex(secrets.token_bytes(8))
     # TODO add collision detection
-    local_locator = locators_joined[0]
+    local_loc = locs_joined[0]
     receive_thread = ReceiveThread()
     receive_thread.start()
     send_thread = SendThread()

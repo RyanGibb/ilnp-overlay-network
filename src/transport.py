@@ -31,12 +31,12 @@ class Socket:
         # UDP-like protocol, so no handshake
     
     def send(self, data):
-        locator    = ":".join(self.addr.split(":")[:4])
-        identifier = ":".join(self.addr.split(":")[4:])
+        loc = ":".join(self.addr.split(":")[:4])
+        nid = ":".join(self.addr.split(":")[4:])
         # Transport header is simply a 16bit port
         header = struct.pack("!2s", int_to_bytes(self.port, 2))
         message = header + data
-        network.send(locator, identifier, message)
+        network.send(loc, nid, message)
 
     def receive(self):
         try:
@@ -54,8 +54,8 @@ class ReceiveThread(threading.Thread):
             try:
                 (
                     message, 
-                    src_locator, src_identifier,
-                    dst_locator, dst_identifier
+                    src_loc, src_nid,
+                    dst_loc, dst_nid
                 ) = network.receive(next_header)
             except NetworkException:
                 # TODO wait here?
@@ -66,10 +66,10 @@ class ReceiveThread(threading.Thread):
             port = bytes_to_int(port_bytes)
             data = message[2:]
             # TODO make mcast not broadcast and horribly hacky
-            if dst_identifier == network.MCAST_IDENTIFIER:
-                src_addr = ":".join([dst_locator, dst_identifier])
+            if dst_nid == network.MCAST_NID:
+                src_addr = ":".join([dst_loc, dst_nid])
             else:
-                src_addr = ":".join([src_locator, src_identifier])
+                src_addr = ":".join([src_loc, src_nid])
             # drop if not valid remote (i.e. there is no coresponding socket)
             if (src_addr, port) not in in_qs:
                 continue
