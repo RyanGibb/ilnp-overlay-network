@@ -107,7 +107,7 @@ def startup():
     sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_RECVPKTINFO, 1)
 
     global local_addr
-    local_addr = socket.gethostbyname(socket.gethostname())
+    local_addr = socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET6)[0][4][0]
     
     global log_file
     if "log" in config_section and config_section.getboolean("log"):
