@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
-pis_addrs=(alice-wifi bob-wifi)
+METHOD=${1:-"wifi"} 
+
+pis_addrs=("alice-$METHOD" "bob-$METHOD")
 
 for pi_addr in "${pis_addrs[@]}"; do
     echo "$pi_addr"
