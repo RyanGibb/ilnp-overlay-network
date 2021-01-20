@@ -7,6 +7,7 @@ import os
 import network
 import util
 from util import NetworkException
+import discovery
 
 PROTOCOL_NEXT_HEADER = 42
 
@@ -26,14 +27,16 @@ class Socket:
     
     def send(self, remote, data):
         # remote_addr is an ILV (Identfier-Locator Vector)
-        remote_addr, remote_port = remote
-        remote_addr_split = remote_addr.split(":")
-        loc = ":".join(remote_addr_split[:4])
-        nid = ":".join(remote_addr_split[4:])
+        remote_nid, remote_port = remote
+        
+        # TODO multiple locs
+        #remote_loc = discovery.get_locs(remote_nid)[0]
+        remote_loc = network.local_loc # TODO once discovery is out of band update to use one of the locators that the advertisement was router through
+        
         # Transport header is just a 16 bit port
         header = struct.pack("!2s", util.int_to_bytes(remote_port, 2))
         message = header + data
-        network.send(loc, nid, message)
+        network.send(remote_loc, remote_nid, message)
         if log_file != None:
             util.write_log(log_file, "%-60s <- %-60s %s" % (
                 "[%s]:%d" % remote,
@@ -58,18 +61,13 @@ class ReceiveThread(threading.Thread):
                     dst_loc, dst_nid
                 ) = network.receive(PROTOCOL_NEXT_HEADER)
             except NetworkException:
-                # TODO wait here?
+                # TODO wait?
                 time.sleep(1)
                 continue
             header = message[:2]
             port_bytes = struct.unpack("!2s", header)[0]
             port = util.bytes_to_int(port_bytes)
             data = message[2:]
-            # TODO make mcast not broadcast and horribly hacky
-            if dst_nid == network.MCAST_NID:
-                src_addr = ":".join([dst_loc, dst_nid])
-            else:
-                src_addr = ":".join([src_loc, src_nid])
             # drop if not valid port (if there's no socket bound to this port)
             if port not in in_queues:
                 continue
@@ -80,7 +78,7 @@ class ReceiveThread(threading.Thread):
 
             if log_file != None:
                 util.write_log(log_file, "%-60s -> %-60s %s" % (
-                    src_addr,
+                    ":".join([src_loc, src_nid]),
                     "[%s:%s]:%d" % (dst_loc, dst_nid, port),
                     data
                 ))

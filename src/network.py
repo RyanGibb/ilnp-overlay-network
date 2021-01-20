@@ -6,6 +6,7 @@ import threading
 import os
 
 import link
+import discovery
 import util
 from util import NetworkException
 
@@ -28,8 +29,7 @@ STATIC_MASKS_FIELD = (
     FLOW_LABEL      << FLOW_LABEL_SHIFT
 )
 
-# nid used for multicasting over overlay network
-MCAST_NID = 'ff12:0:0:0'
+ALL_NODES_NID = 'ff02:0:0:1'
 
 # Output circular queues
 out_queue = collections.deque(maxlen=None)
@@ -42,13 +42,13 @@ class PackageType():
     CONTROL_PACKAGE = 1
 
 
-# package_type should be PackageType.DATA_PACKAGE or PackageType.CONTROL_PACKAGE
+# pkg_type should be PackageType.DATA_PACKAGE or PackageType.CONTROL_PACKAGE
 # loc should be a 64 bit hex string
-def get_mcast_grp(loc, package_type):
+def get_mcast_grp(loc, pkg_type):
     # 16 bit hex representation of package type (modulo 2^16)
-    package_type_hex = format(package_type % 65536, "x")
+    pkg_type_hex = format(pkg_type % 65536, "x")
     
-    # 32 bit hex representation of user ID (modulo 2^16)
+    # 16 bit hex representation of user ID (modulo 2^16)
     uid_hex = format(os.getuid() % 65536, "x")
 
     # Must have prefix ff00::/8 for multicast.
@@ -68,17 +68,17 @@ def get_mcast_grp(loc, package_type):
     # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     return "%s:0:%s:%s:%s%%%s" % (
         mcast_prefix,
-        package_type_hex,
+        pkg_type_hex,
         uid_hex,
         loc,
         link.mcast_interface
     )
 
 
-def _send(loc, nid, data):
+def _send(loc, nid, data, pkg_type=PackageType.DATA_PACKAGE):
     # TODO add address resolution and forwarding table
     # (loc -> interface, where an interface is a multicast group)
-    interface = get_mcast_grp(loc, PackageType.DATA_PACKAGE)
+    interface = get_mcast_grp(loc, pkg_type)
 
     # ILNPv6 header is of the form:
     # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -131,7 +131,7 @@ def _receive():
     to_address, message = link.receive()
     
     # Extract packet type from multicast group
-    package_type = int.from_bytes(to_address[2:4], byteorder="big")
+    pkg_type = int.from_bytes(to_address[4:6], byteorder="big")
 
     header = message[:40] # Header is 40 bytes
     (
@@ -146,14 +146,14 @@ def _receive():
     ) = struct.unpack("!4s2sss8s8s8s8s", header)
     
     # Not currently used
-    #masked_fields = int.from_bytes(masked_bytes, byteorder="big", signed=False)
-    #version       = (masked_fields & VERSION_MASK)       >> VERSION_SHIFT
-    #traffic_class = (masked_fields & TRAFFIC_CLASS_MASK) >> TRAFFIC_CLASS_SHIFT
-    #flow_label    = (masked_fields & FLOW_LABEL_MASK)    >> FLOW_LABEL_SHIFT
+    # masked_fields = int.from_bytes(masked_bytes, byteorder="big", signed=False)
+    # version       = (masked_fields & VERSION_MASK)       >> VERSION_SHIFT
+    # traffic_class = (masked_fields & TRAFFIC_CLASS_MASK) >> TRAFFIC_CLASS_SHIFT
+    # flow_label    = (masked_fields & FLOW_LABEL_MASK)    >> FLOW_LABEL_SHIFT
 
     dst_nid = util.bytes_to_hex(dst_nid_bytes)
     if (dst_nid != local_nid and
-        dst_nid != MCAST_NID):
+        dst_nid != ALL_NODES_NID):
         return
     payload_length = util.bytes_to_int(payload_length_bytes)
     next_header    = util.bytes_to_int(next_header_bytes)
@@ -169,10 +169,21 @@ def _receive():
             ":".join([dst_loc, dst_nid]),
             data
         ))
-    
-    return next_header, package_type, (
-        data, src_loc, src_nid, dst_loc, dst_nid
-    )
+
+    if pkg_type == PackageType.DATA_PACKAGE:
+        in_queues.setdefault(
+                next_header, collections.deque(maxlen=None)
+        ).append((
+            data, src_loc, src_nid, dst_loc, dst_nid
+        ))
+        return True
+    elif pkg_type == PackageType.CONTROL_PACKAGE:
+        # Extract locator the packet was recived from, from multicast group
+        recived_loc = util.bytes_to_hex(to_address[8:16])
+        message = discovery.process_message(data, recived_loc)
+        if message != None:
+            _send(discovery.OOB_LOC, ALL_NODES_NID, message, PackageType.CONTROL_PACKAGE)
+        return False
 
 
 class ReceiveThread(threading.Thread):
@@ -180,14 +191,9 @@ class ReceiveThread(threading.Thread):
         # Queues by next header
         while True:
             received = _receive()
-            if received == None:
-                continue
-            next_header, package_type, result = received
-            # TODO process control packages
-            if package_type == PackageType.DATA_PACKAGE:
-                in_queues.setdefault(
-                    next_header, collections.deque(maxlen=None)
-                ).append(result)
+            if received:
+                # TODO wait?
+                continue            
 
 
 def receive(next_header):
@@ -225,6 +231,8 @@ def startup():
         link.join(get_mcast_grp(loc, PackageType.DATA_PACKAGE))
     local_loc = locs_joined[0]
 
+    link.join(get_mcast_grp(discovery.OOB_LOC, PackageType.CONTROL_PACKAGE))
+
     global local_nid
     if "local_nid" in config_section:
         local_nid = config_section["local_nid"]
@@ -246,12 +254,9 @@ def startup():
     ReceiveThread().start()
     SendThread().start()
 
+    # Discovery startup should run after link startup
+    discovery.startup(local_nid, locs_joined)
+    _send(discovery.OOB_LOC, ALL_NODES_NID, discovery.get_solititation(), PackageType.CONTROL_PACKAGE)
+
 
 startup()
-
-
-
-
-
-
-    
