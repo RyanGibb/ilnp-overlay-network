@@ -4,6 +4,7 @@ import secrets
 import collections
 import threading
 import os
+import time
 
 import link
 import discovery
@@ -75,6 +76,7 @@ def get_mcast_grp(loc, pkg_type):
     )
 
 
+# Send now
 def _send(loc, nid, data, pkg_type=PackageType.DATA_PACKAGE):
     # TODO add address resolution and forwarding table
     # (loc -> interface, where an interface is a multicast group)
@@ -127,6 +129,7 @@ def _send(loc, nid, data, pkg_type=PackageType.DATA_PACKAGE):
         ))
 
 
+# Recieve now
 def _receive():
     to_address, message = link.receive()
     
@@ -186,6 +189,7 @@ def _receive():
         return False
 
 
+# Recieves messages and adds them to recieve queue
 class ReceiveThread(threading.Thread):
     def run(self):
         # Queues by next header
@@ -196,6 +200,7 @@ class ReceiveThread(threading.Thread):
                 continue            
 
 
+# Receive from queue
 def receive(next_header):
     # Raises IndexError if no elements present
     try:
@@ -206,6 +211,7 @@ def receive(next_header):
         raise NetworkException("Invalid next")
 
 
+# Sends messages in send queue
 class SendThread(threading.Thread):
     def run(self):
         while True:
@@ -216,9 +222,20 @@ class SendThread(threading.Thread):
                 continue
 
 
-def send(loc, nid, data):
+# Add to send queue
+def send(loc, nid, data, pkg_type=PackageType.DATA_PACKAGE):
     # note if maxlen set this will overwrite the oldest value
-    return out_queue.append((loc, nid, data))
+    return out_queue.append((loc, nid, data, pkg_type))
+
+
+class SolititationThread(threading.Thread):
+    def run(self):
+        while True:
+            try:
+                _send(discovery.get_solititation())
+            except:
+                pass
+            time.sleep(discovery.wait_time)
 
 
 def startup():
@@ -256,7 +273,10 @@ def startup():
 
     # Discovery startup should run after link startup
     discovery.startup(local_nid, locs_joined)
-    _send(discovery.OOB_LOC, ALL_NODES_NID, discovery.get_solititation(), PackageType.CONTROL_PACKAGE)
+    send(discovery.OOB_LOC, ALL_NODES_NID, discovery.get_solititation(), PackageType.CONTROL_PACKAGE)
+
+    # Start thread to send solititation messages from discovery module
+    SolititationThread().start()
 
 
 startup()

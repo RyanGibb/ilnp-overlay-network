@@ -82,6 +82,9 @@ def startup(local_nid_param, locs_joined):
     global local_hst
     local_hst = config_section["hostname"].encode('utf-8')
 
+    global wait_time
+    wait_time = config_section.getint("wait_time")
+
     global local_nid
     local_nid = local_nid_param
 

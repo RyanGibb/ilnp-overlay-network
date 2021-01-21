@@ -6,9 +6,9 @@ import util
 import discovery
 
 HOSTNAME        = util.config["discovery"]["hostname"]
-PORT            = int(util.config["application"]["port"])
+PORT            = util.config["application"].getint("port")
 REMOTE_HOSTNAME = util.config["application"]["remote_hostname"]
-REMOTE_PORT     = int(util.config["application"]["remote_port"])
+REMOTE_PORT     = util.config["application"].getint("remote_port")
 
 def heartbeat():
     sock = transport.Socket()
