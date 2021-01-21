@@ -63,6 +63,12 @@ def process_message(message, recived_loc):
     # Can have multiple locators for one nid
     nid_to_locs.setdefault(nid, set()).add(recived_loc)
 
+    if log_file != None:
+        util.write_log(log_file, "%s\t%s" % (
+            "%s => %s" % (hst, nid),
+            "%s +> %s" % (nid, recived_loc)
+        ))
+
     if solititation:
         return get_advertisement()
     else:
@@ -70,9 +76,11 @@ def process_message(message, recived_loc):
 
 
 def startup(local_nid_param, locs_joined):
+    config_section = util.config["discovery"]
+
     # local hostname
     global local_hst
-    local_hst = util.config["other"]["hostname"].encode('utf-8')
+    local_hst = config_section["hostname"].encode('utf-8')
 
     global local_nid
     local_nid = local_nid_param
@@ -80,3 +88,13 @@ def startup(local_nid_param, locs_joined):
     hst_to_nid[local_hst] = local_nid
     # Can have multiple locators for one nid
     nid_to_locs[local_nid] = set(locs_joined)
+
+    global log_file
+    if "log" in config_section and config_section.getboolean("log"):
+        log_filepath = util.get_log_file_path("discovery")
+        log_file = open(log_filepath, "a")
+        util.write_log(log_file, "Started")
+        for k in config_section:
+            util.write_log(log_file, "\t%s = %s" % (k, config_section[k]))
+    else:
+        log_file = None

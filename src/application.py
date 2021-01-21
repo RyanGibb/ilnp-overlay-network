@@ -5,17 +5,17 @@ import transport
 import util
 import discovery
 
-PORT = 1000
-
-HOSTNAME = util.config["other"]["hostname"]
-REMOTE_HOSTNAME = util.config["other"]["remote_hostname"]
+HOSTNAME        = util.config["discovery"]["hostname"]
+PORT            = int(util.config["application"]["port"])
+REMOTE_HOSTNAME = util.config["application"]["remote_hostname"]
+REMOTE_PORT     = int(util.config["application"]["remote_port"])
 
 def heartbeat():
     sock = transport.Socket()
     sock.bind(PORT)
     while True:
         try:
-            remote_addr = discovery.getaddrinfo(REMOTE_HOSTNAME, PORT)
+            remote_addr = discovery.getaddrinfo(REMOTE_HOSTNAME, REMOTE_PORT)
             break
         except transport.NetworkException as e:
             time.sleep(1)

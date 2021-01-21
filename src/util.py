@@ -1,10 +1,11 @@
+import sys
 import os
 import socket
 import configparser
 from pathlib import Path
 from datetime import datetime
 
-CONFIG_FILENAME = "config.ini"
+CONFIG_FILE = os.path.join(os.path.dirname(__file__), "..", "config", "config.ini")
 
 CONFIG_LINK_SECTION      = "link"
 CONFIG_NETWORK_SECTION   = "network"
@@ -46,7 +47,7 @@ def get_log_file_path(log_type):
         os.path.dirname(__file__),
         "..",
         "logs",
-        "%s_%s.log" % (log_type, socket.gethostname())
+        "%s_%s.log" % (log_type, config["discovery"]["hostname"])
     )
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     return path
@@ -59,10 +60,9 @@ def write_log(log_file, message):
 
 def startup():
     global config
-    # get config file in parent directory
-    filepath = os.path.join(os.path.dirname(__file__), "..", CONFIG_FILENAME)
+    # If passed additional argument, take it as the configuration filepath
+    filepath = CONFIG_FILE if len(sys.argv) < 2 else sys.argv[1]
     config = configparser.ConfigParser()
     config.read(filepath)
-
 
 startup()
