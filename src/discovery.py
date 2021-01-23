@@ -3,10 +3,6 @@ import struct
 import util
 from util import NetworkException
 
-# out of band locator for discovery
-# TODO make discovery in band
-OOB_LOC = "ff:0:0:0"
-
 # hostnames   -> identifiers
 hst_to_nid = {}
 # identifiers -> locators
@@ -27,50 +23,54 @@ def get_locs(nid):
     return list(locs)
 
 
-def get_solititation():
-    message = struct.pack("!8s?",
+def get_solititation(loc):
+    message = struct.pack("!8s8s?",
         # implicit advertisement
         util.hex_to_bytes(local_nid, 8),
+        util.hex_to_bytes(loc, 8),
         # solititation
         True,
     )
     # null terminated string
-    message += local_hst
+    message += local_hst.encode('utf-8')
     return message
 
 
-def get_advertisement():
-    message = struct.pack("!8s?",
+def get_advertisement(loc):
+    message = struct.pack("!8s8s?",
         util.hex_to_bytes(local_nid, 8),
+        util.hex_to_bytes(loc, 8),
         # not solititation
         False,
     )
-    message += local_hst
+    message += local_hst.encode('utf-8')
     return message
 
 
-def process_message(message, recived_loc):
-    # 9 bytes of struct
-    message_struct = message[:9]
+def process_message(message, recieved_interface):
+    # 17 bytes of struct
+    message_struct = message[:17]
     (
         nid_bytes,
+        loc_bytes,
         solititation,
-    ) = struct.unpack("!8s?", message_struct)
+    ) = struct.unpack("!8s8s?", message_struct)
     nid = util.bytes_to_hex(nid_bytes)
-    hst = message[9:].decode('utf-8')
+    loc = util.bytes_to_hex(loc_bytes)
+    hst = message[17:].decode('utf-8')
     
     hst_to_nid[hst] = nid
     # Can have multiple locators for one nid
-    nid_to_locs.setdefault(nid, set()).add(recived_loc)
+    nid_to_locs.setdefault(nid, set()).add(loc)
 
     if log_file != None:
-        util.write_log(log_file, "%s\t%s" % (
-            "%s => %s" % (hst, nid),
-            "%s +> %s" % (nid, recived_loc)
+        util.write_log(log_file, "\n\t%s\n\t%s" % (
+            "%s => %s" % (hst, hst_to_nid[hst]),
+            "%s => %s" % (nid, nid_to_locs[nid])
         ))
 
     if solititation:
-        return get_advertisement()
+        return get_advertisement(recieved_interface)
     else:
         return None
 
@@ -78,9 +78,19 @@ def process_message(message, recived_loc):
 def startup(local_nid_param, locs_joined):
     config_section = util.config["discovery"]
 
+    global log_file
+    if "log" in config_section and config_section.getboolean("log"):
+        log_filepath = util.get_log_file_path("discovery")
+        log_file = open(log_filepath, "a")
+        util.write_log(log_file, "Started")
+        for k in config_section:
+            util.write_log(log_file, "\t%s = %s" % (k, config_section[k]))
+    else:
+        log_file = None
+
     # local hostname
     global local_hst
-    local_hst = config_section["hostname"].encode('utf-8')
+    local_hst = config_section["hostname"]
 
     global wait_time
     wait_time = config_section.getint("wait_time")
@@ -92,12 +102,11 @@ def startup(local_nid_param, locs_joined):
     # Can have multiple locators for one nid
     nid_to_locs[local_nid] = set(locs_joined)
 
-    global log_file
-    if "log" in config_section and config_section.getboolean("log"):
-        log_filepath = util.get_log_file_path("discovery")
-        log_file = open(log_filepath, "a")
-        util.write_log(log_file, "Started")
-        for k in config_section:
-            util.write_log(log_file, "\t%s = %s" % (k, config_section[k]))
-    else:
-        log_file = None
+    if log_file != None:
+        util.write_log(log_file, "\n\t%s\n\t%s" % (
+            "%s => %s" % (local_hst, hst_to_nid[local_hst]),
+            "%s => %s" % (local_nid, nid_to_locs[local_nid])
+        ))
+    
+
+    

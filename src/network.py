@@ -30,12 +30,18 @@ STATIC_MASKS_FIELD = (
     FLOW_LABEL      << FLOW_LABEL_SHIFT
 )
 
-ALL_NODES_NID = 'ff02:0:0:1'
+ALL_NODES_LOC = 'ff02:0:0:1'
 
 # Output circular queues
 out_queue = collections.deque(maxlen=None)
 # Map of input circular queues indexed by next header
 in_queues = {}
+
+# Map of locators to interfaces.
+# Note that interfaces are locators themselves,
+# but represent the network to forward the packet to,
+# to rather than the desination network.
+loc_to_interface = {}
 
 
 class PackageType():
@@ -43,45 +49,8 @@ class PackageType():
     CONTROL_PACKAGE = 1
 
 
-# pkg_type should be PackageType.DATA_PACKAGE or PackageType.CONTROL_PACKAGE
-# loc should be a 64 bit hex string
-def get_mcast_grp(loc, pkg_type):
-    # 16 bit hex representation of package type (modulo 2^16)
-    pkg_type_hex = format(pkg_type % 65536, "x")
-    
-    # 16 bit hex representation of user ID (modulo 2^16)
-    uid_hex = format(os.getuid() % 65536, "x")
-
-    # Must have prefix ff00::/8 for multicast.
-    # The next 4 bits are flags. Transient/non-perminant is denoted by 1.
-    # The final 4 bits are for the scope. Link-local is denoted by 2.
-    mcast_prefix = "ff12"
-
-    # Multicast group address is of the form:
-    # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    # |        Multicast Prefix       |             UNUSED            |
-    # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    # |         Package Type          |            User ID            |
-    # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    # |                                                               |
-    # +                              Loc                              +
-    # |                                                               |
-    # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    return "%s:0:%s:%s:%s%%%s" % (
-        mcast_prefix,
-        pkg_type_hex,
-        uid_hex,
-        loc,
-        link.mcast_interface
-    )
-
-
-# Send now
-def _send(loc, nid, data, pkg_type=PackageType.DATA_PACKAGE):
-    # TODO add address resolution and forwarding table
-    # (loc -> interface, where an interface is a multicast group)
-    interface = get_mcast_grp(loc, pkg_type)
-
+# Send now, to specific interface.
+def send_interface(nid, loc, interface, data, pkg_type=PackageType.DATA_PACKAGE):
     # ILNPv6 header is of the form:
     # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     # |Version| Traffic Class |           Flow Label                  |
@@ -104,37 +73,64 @@ def _send(loc, nid, data, pkg_type=PackageType.DATA_PACKAGE):
     # +                        Destination NID                        +
     # |                                                               |
     # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    next_header = 42 # identifies skinny transport layer
+    next_header    = 42 # identifies skinny transport layer
     payload_length = len(data)
-    hop_limit   = 0 # TODO set
+    hop_limit      = default_hop_limit
     header = struct.pack("!4s2sss8s8s8s8s",
         STATIC_MASKS_FIELD.to_bytes(4, byteorder="big", signed=False),
         util.int_to_bytes(payload_length, 2),
-        util.int_to_bytes(next_header,   1),
-        util.int_to_bytes(hop_limit,     1),
-        util.hex_to_bytes(local_loc,     8),
+        util.int_to_bytes(next_header,    1),
+        util.int_to_bytes(hop_limit,      1),
+        util.hex_to_bytes(local_loc,      8),
         util.hex_to_bytes(local_nid,      8),
-        util.hex_to_bytes(loc,           8),
+        util.hex_to_bytes(loc,            8),
         util.hex_to_bytes(nid,            8),
     )
 
     message = header + data
-    link.send(interface, message)
+    link.send(interface, pkg_type, message)
 
     if log_file != None:
-        util.write_log(log_file, "%-60s <- %-60s %s" % (
-            ":".join([loc, nid]),
+        util.write_log(log_file, "%-4s %-90s <- %-60s %s" % (
+            "(%d)" % header[7], # hop limit
+            ":".join([loc, nid]) + "%" + interface,
             ":".join([local_loc, local_nid]),
             data
         ))
 
 
+# Send now, mapping nid to locator, and locator to interface.
+def _send(nid, data, pkg_type=PackageType.DATA_PACKAGE):
+    # TODO multiple locs
+    loc = discovery.get_locs(nid)[0]
+    # Interface is a locator that identifies the network to foward the packet to.
+    interface = loc_to_interface.get(loc)
+    if interface not in locs_joined:
+        raise NetworkException("No interface to loctor: %s" % loc)
+    send_interface(nid, loc, interface, data, pkg_type)
+
+
+# Add to send queue.
+# Only sends data package types.
+def send(nid, data):
+    # note if maxlen set this will overwrite the oldest value
+    return out_queue.append((nid, data))
+
+
+# Sends messages in send queue
+class SendThread(threading.Thread):
+    def run(self):
+        while True:
+            try:
+                _send(*out_queue.popleft())
+            except IndexError:
+                # TODO wait here?
+                continue
+
+
 # Recieve now
 def _receive():
-    to_address, message = link.receive()
-    
-    # Extract packet type from multicast group
-    pkg_type = int.from_bytes(to_address[4:6], byteorder="big")
+    message, pkg_type, recieved_interface, from_ip = link.receive()
 
     header = message[:40] # Header is 40 bytes
     (
@@ -153,22 +149,38 @@ def _receive():
     # version       = (masked_fields & VERSION_MASK)       >> VERSION_SHIFT
     # traffic_class = (masked_fields & TRAFFIC_CLASS_MASK) >> TRAFFIC_CLASS_SHIFT
     # flow_label    = (masked_fields & FLOW_LABEL_MASK)    >> FLOW_LABEL_SHIFT
-
-    dst_nid = util.bytes_to_hex(dst_nid_bytes)
-    if (dst_nid != local_nid and
-        dst_nid != ALL_NODES_NID):
-        return
     payload_length = util.bytes_to_int(payload_length_bytes)
     next_header    = util.bytes_to_int(next_header_bytes)
     hop_limit      = util.bytes_to_int(hop_limit_bytes)
+    dst_nid        = util.bytes_to_hex(dst_nid_bytes)
     src_nid        = util.bytes_to_hex(src_nid_bytes)
     src_loc        = util.bytes_to_hex(src_loc_bytes)
     dst_loc        = util.bytes_to_hex(dst_loc_bytes)
-    data = message[40:]
 
+    # Ignore own messages, if they aren't to us
+    if from_ip == link.local_addr and dst_nid != local_nid:
+        return
+    
+    # Add mapping from source locator to the interface the packet was recieved on
+    loc_to_interface[src_loc] = recieved_interface
+
+    # If not for us, try to forward
+    if dst_nid != local_nid and dst_loc != ALL_NODES_LOC:
+        interface = loc_to_interface.get(dst_loc)
+        if interface != None:
+            mutable_message = bytearray(message)
+            if mutable_message[7] > 0:
+                # Decrement hop limit
+                mutable_message[7] -= 1
+                link.send(interface, pkg_type, bytes(mutable_message))
+        # TODO else send solititation?
+        return
+
+    data = message[40:]
     if log_file != None:
-        util.write_log(log_file, "%-60s -> %-60s %s" % (
-            ":".join([src_loc, src_nid]),
+        util.write_log(log_file, "%-4s %-90s -> %-60s %s" % (
+            "(%d)" % header[7], # hop limit
+            ":".join([src_loc, src_nid]) + "%" + recieved_interface,
             ":".join([dst_loc, dst_nid]),
             data
         ))
@@ -179,25 +191,20 @@ def _receive():
         ).append((
             data, src_loc, src_nid, dst_loc, dst_nid
         ))
-        return True
     elif pkg_type == PackageType.CONTROL_PACKAGE:
-        # Extract locator the packet was recived from, from multicast group
-        recived_loc = util.bytes_to_hex(to_address[8:16])
-        message = discovery.process_message(data, recived_loc)
-        if message != None:
-            _send(discovery.OOB_LOC, ALL_NODES_NID, message, PackageType.CONTROL_PACKAGE)
-        return False
-
-
-# Recieves messages and adds them to recieve queue
-class ReceiveThread(threading.Thread):
-    def run(self):
-        # Queues by next header
-        while True:
-            received = _receive()
-            if received:
-                # TODO wait?
-                continue            
+        response = discovery.process_message(data, recieved_interface)
+        if response != None:
+            send_interface("0:0:0:0", ALL_NODES_LOC, recieved_interface, response, PackageType.CONTROL_PACKAGE)
+        # TODO forward original message with reduced hop limit?
+        # Forward discovery message to other interfaces
+        for interface in locs_joined:
+            if interface == recieved_interface:
+                continue
+            mutable_message = bytearray(message)
+            if mutable_message[7] > 0:
+                # Decrement hop limit
+                mutable_message[7] -= 1
+                link.send(interface, PackageType.CONTROL_PACKAGE, bytes(mutable_message))
 
 
 # Receive from queue
@@ -211,28 +218,22 @@ def receive(next_header):
         raise NetworkException("Invalid next")
 
 
-# Sends messages in send queue
-class SendThread(threading.Thread):
+# Recieves messages and adds them to recieve queue
+class ReceiveThread(threading.Thread):
     def run(self):
+        # Queues by next header
         while True:
-            try:
-                _send(*out_queue.popleft())
-            except IndexError:
-                # TODO wait here?
-                continue
-
-
-# Add to send queue
-def send(loc, nid, data, pkg_type=PackageType.DATA_PACKAGE):
-    # note if maxlen set this will overwrite the oldest value
-    return out_queue.append((loc, nid, data, pkg_type))
+            _receive()        
 
 
 class SolititationThread(threading.Thread):
     def run(self):
         while True:
             try:
-                _send(discovery.get_solititation())
+                for interface in locs_joined:
+                    # TODO don't send solititation if solititation received from interface in passed discovery.wait_time
+                    # nid doesn't matter for ALL_NODES_LOC
+                    send_interface("0:0:0:0", ALL_NODES_LOC, interface, discovery.get_solititation(interface), PackageType.CONTROL_PACKAGE)
             except:
                 pass
             time.sleep(discovery.wait_time)
@@ -244,19 +245,22 @@ def startup():
     global locs_joined, local_loc
     locs_joined = [loc.strip() for loc in config_section["locators"].split(",")]
     for loc in locs_joined:
-        link.join(get_mcast_grp(loc, PackageType.CONTROL_PACKAGE))
-        link.join(get_mcast_grp(loc, PackageType.DATA_PACKAGE))
+        link.join(loc, PackageType.CONTROL_PACKAGE)
+        link.join(loc, PackageType.DATA_PACKAGE)
+        # For locs joined, send to own interface
+        loc_to_interface[loc] = loc
     local_loc = locs_joined[0]
 
-    link.join(get_mcast_grp(discovery.OOB_LOC, PackageType.CONTROL_PACKAGE))
-
     global local_nid
-    if "local_nid" in config_section:
-        local_nid = config_section["local_nid"]
+    if "nid" in config_section:
+        local_nid = config_section["nid"]
     else:
         # TODO improve assignement
         local_nid = util.bytes_to_hex(secrets.token_bytes(8))
     # TODO add collision detection
+
+    global default_hop_limit
+    default_hop_limit = config_section["default_hop_limit"]
 
     global log_file
     if "log" in config_section and config_section.getboolean("log"):
@@ -273,7 +277,6 @@ def startup():
 
     # Discovery startup should run after link startup
     discovery.startup(local_nid, locs_joined)
-    send(discovery.OOB_LOC, ALL_NODES_NID, discovery.get_solititation(), PackageType.CONTROL_PACKAGE)
 
     # Start thread to send solititation messages from discovery module
     SolititationThread().start()

@@ -7,7 +7,43 @@ import util
 joined_mcast_grps = set()
 
 
-def send(mcast_grp, message):
+
+# Transforms locators (coresponding to an interface) into a multicast address.
+# pkg_type should be PackageType.DATA_PACKAGE or PackageType.CONTROL_PACKAGE
+# loc should be a 64 bit hex string
+def get_mcast_grp(loc, pkg_type):
+    # 16 bit hex representation of package type (modulo 2^16)
+    pkg_type_hex = format(pkg_type % 65536, "x")
+    
+    # 16 bit hex representation of user ID (modulo 2^16)
+    uid_hex = format(os.getuid() % 65536, "x")
+
+    # Must have prefix ff00::/8 for multicast.
+    # The next 4 bits are flags. Transient/non-perminant is denoted by 1.
+    # The final 4 bits are for the scope. Link-local is denoted by 2.
+    mcast_prefix = "ff12"
+
+    # Multicast group address is of the form:
+    # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    # |        Multicast Prefix       |             UNUSED            |
+    # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    # |         Package Type          |            User ID            |
+    # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    # |                                                               |
+    # +                              Loc                              +
+    # |                                                               |
+    # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    return "%s:0:%s:%s:%s%%%s" % (
+        mcast_prefix,
+        pkg_type_hex,
+        uid_hex,
+        loc,
+        mcast_interface
+    )
+
+
+def send(interface, pkg_type, message):
+    mcast_grp = get_mcast_grp(interface, pkg_type)
     if mcast_grp not in joined_mcast_grps:
         raise IOError("Not joined multicast group '%s'" % mcast_grp)
     (family, socktype, proto, canonname, sockaddr) = socket.getaddrinfo(
@@ -29,7 +65,8 @@ def send(mcast_grp, message):
         ))
 
 
-def join(mcast_grp):
+def join(interface, pkg_type):
+    mcast_grp = get_mcast_grp(interface, pkg_type)
     if mcast_grp in joined_mcast_grps:
         raise IOError("Already joined multicast group '%s'" % mcast_grp)
     (family, socktype, proto, canonname, sockaddr) = socket.getaddrinfo(
@@ -76,6 +113,13 @@ def receive():
     from_ip, from_port = socket.getnameinfo(from_address,
         (socket.NI_NUMERICHOST | socket.NI_NUMERICSERV)
     )
+    from_ip_without_interface = from_address[0]
+
+    # Extract packet type from multicast group
+    pkg_type = int.from_bytes(to_address[4:6], byteorder="big")
+
+    # Extract locator the packet was recived from from multicast group
+    recived_loc = util.bytes_to_hex(to_address[8:16])
 
     if log_file != None:
         util.write_log(log_file, "%-60s -> %-60s %s" % (
@@ -83,7 +127,7 @@ def receive():
             "[%s]:%d" % (util.bytes_to_hex(to_address), mcast_port),
             message
         ))
-    return to_address, message
+    return message, pkg_type, recived_loc, from_ip_without_interface
 
 
 def startup():
@@ -107,7 +151,8 @@ def startup():
     sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_RECVPKTINFO, 1)
 
     global local_addr
-    local_addr = socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET6)[0][4][0]
+    # from https://stackoverflow.com/questions/24196932/how-can-i-get-the-ip-address-from-nic-in-python
+    local_addr = os.popen('ip addr show %s' % mcast_interface).read().split("inet6 ")[1].split("/")[0]
     
     global log_file
     if "log" in config_section and config_section.getboolean("log"):

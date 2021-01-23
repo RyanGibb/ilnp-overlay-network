@@ -26,17 +26,11 @@ class Socket:
         self.in_queue = in_queue
     
     def send(self, remote, data):
-        # remote_addr is an ILV (Identfier-Locator Vector)
         remote_nid, remote_port = remote
-        
-        # TODO multiple locs
-        #remote_loc = discovery.get_locs(remote_nid)[0]
-        remote_loc = network.local_loc # TODO once discovery is out of band update to use one of the locators that the advertisement was router through
-        
         # Transport header is just a 16 bit port
         header = struct.pack("!2s", util.int_to_bytes(remote_port, 2))
         message = header + data
-        network.send(remote_loc, remote_nid, message)
+        network.send(remote_nid, message)
         if log_file != None:
             util.write_log(log_file, "%-60s <- %-60s %s" % (
                 "[%s]:%d" % remote,
