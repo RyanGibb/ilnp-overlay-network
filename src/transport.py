@@ -30,11 +30,11 @@ class Socket:
         # Transport header is just a 16 bit port
         header = struct.pack("!2s", util.int_to_bytes(remote_port, 2))
         message = header + data
-        network.send(remote_nid, message)
+        network.send(remote_nid, message, PROTOCOL_NEXT_HEADER)
         if log_file != None:
             util.write_log(log_file, "%-60s <- %-60s %s" % (
                 "[%s]:%d" % remote,
-                "%s:%s" % (network.local_loc, network.local_nid),
+                "%s" % (network.local_nid),
                 data
             ))
 
@@ -49,11 +49,7 @@ class ReceiveThread(threading.Thread):
     def run(self):
         while True:
             try:
-                (
-                    message, 
-                    src_loc, src_nid,
-                    dst_loc, dst_nid
-                ) = network.receive(PROTOCOL_NEXT_HEADER)
+                message, src_nid, dst_nid = network.receive(PROTOCOL_NEXT_HEADER)
             # Input queue empty (or non-existant) for next header PROTOCOL_NEXT_HEADER
             except (IndexError, KeyError):
                 # TODO wait?
@@ -74,9 +70,9 @@ class ReceiveThread(threading.Thread):
             ).append(data)
 
             if log_file != None:
-                util.write_log(log_file, "%-60s -> %-60s %s" % (
-                    ":".join([src_loc, src_nid]),
-                    "[%s:%s]:%d" % (dst_loc, dst_nid, port),
+                util.write_log(log_file, "%-30s -> %-30s %s" % (
+                    src_nid,
+                    "[%s]:%d" % (dst_nid, port),
                     data
                 ))
 

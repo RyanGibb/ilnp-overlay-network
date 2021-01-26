@@ -5,6 +5,7 @@ import collections
 import threading
 import os
 import time
+import random
 
 import link
 import discovery
@@ -37,19 +38,16 @@ out_queue = collections.deque(maxlen=None)
 # Map of input circular queues indexed by next header
 in_queues = {}
 
-# Map of locators to interfaces and their timestamp (seconds since epoch).
-# Note that interfaces are locators themselves,
-# but represent the network to forward the packet to,
-# to rather than the desination network.
+# Map of locators to interfaces (which are locators than this node has joined),
+# and timestamps (seconds since epoch).
 # Populated by backwards learning.
 loc_to_interface = {}
 
-# Maps interface identifiers (locators) to timestamps of the
-# last solititation recieved on that interface.
+# Maps interfaces to timestamps of the last solititation recieved on that interface.
 solititation_timestamps = {}
 
 
-def get_interface(loc):
+def map_locator_to_interface(loc):
     # Interface is a locator that identifies the network to foward the packet to.
     entry = loc_to_interface.get(loc)
     if entry != None:
@@ -64,13 +62,16 @@ def get_interface(loc):
         return interface
 
 
-class PackageType():
-    DATA_PACKAGE = 0
-    CONTROL_PACKAGE = 1
-
-
-# Send now, to specific interface.
-def send_interface(nid, loc, interface, data, pkg_type=PackageType.DATA_PACKAGE):
+# Send now, mapping nid to locator, and locator to interface.
+def _send(nid, data, next_header, interface=None, loc=None):
+    if loc == None:
+        # TODO multiple locs
+        loc = discovery.get_locs(nid)[0]
+    if interface == None:
+        interface = map_locator_to_interface(loc)
+        if interface == None:
+            raise NetworkException("No interface to loctor: %s" % loc)
+    local_loc = interface
     # ILNPv6 header is of the form:
     # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     # |Version| Traffic Class |           Flow Label                  |
@@ -93,7 +94,6 @@ def send_interface(nid, loc, interface, data, pkg_type=PackageType.DATA_PACKAGE)
     # +                        Destination NID                        +
     # |                                                               |
     # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    next_header    = 42 # identifies skinny transport layer
     payload_length = len(data)
     hop_limit      = default_hop_limit
     header = struct.pack("!4s2sss8s8s8s8s",
@@ -108,7 +108,7 @@ def send_interface(nid, loc, interface, data, pkg_type=PackageType.DATA_PACKAGE)
     )
 
     message = header + data
-    link.send(interface, pkg_type, message)
+    link.send(interface, message)
 
     if log_file != None:
         util.write_log(log_file, "%-4s %-90s <- %-60s %s" % (
@@ -119,21 +119,10 @@ def send_interface(nid, loc, interface, data, pkg_type=PackageType.DATA_PACKAGE)
         ))
 
 
-# Send now, mapping nid to locator, and locator to interface.
-def _send(nid, data, pkg_type=PackageType.DATA_PACKAGE):
-    # TODO multiple locs
-    loc = discovery.get_locs(nid)[0]
-    interface = get_interface(loc)
-    if interface not in locs_joined:
-        raise NetworkException("No interface to loctor: %s" % loc)
-    send_interface(nid, loc, interface, data, pkg_type)
-
-
 # Add to send queue.
-# Only sends data package types.
-def send(nid, data):
+def send(nid, data, next_header):
     # note if maxlen set this will overwrite the oldest value
-    return out_queue.append((nid, data))
+    return out_queue.append((nid, data, next_header))
 
 
 # Sends messages in send queue
@@ -151,7 +140,7 @@ class SendThread(threading.Thread):
 
 # Recieve now
 def _receive():
-    message, pkg_type, recieved_interface, from_ip = link.receive()
+    message, recieved_interface, from_ip = link.receive()
 
     header = message[:40] # Header is 40 bytes
     (
@@ -187,13 +176,13 @@ def _receive():
 
     # If not for us, try to forward
     if dst_nid != local_nid and dst_loc != ALL_NODES_LOC:
-        interface = get_interface(dst_loc)
+        interface = map_locator_to_interface(dst_loc)
         if interface != None:
             mutable_message = bytearray(message)
             if mutable_message[7] > 0:
                 # Decrement hop limit
                 mutable_message[7] -= 1
-                link.send(interface, pkg_type, bytes(mutable_message))
+                link.send(interface, bytes(mutable_message))
         return
 
     data = message[40:]
@@ -205,27 +194,30 @@ def _receive():
             data
         ))
 
-    if pkg_type == PackageType.DATA_PACKAGE:
-        in_queues.setdefault(
-                next_header, collections.deque(maxlen=None)
-        ).append((
-            data, src_loc, src_nid, dst_loc, dst_nid
-        ))
-    elif pkg_type == PackageType.CONTROL_PACKAGE:
+    if next_header == discovery.DISCOVERY_NEXT_HEADER:
         response = discovery.process_message(data, recieved_interface)
         if response != None:
             # if response != None, then message was a solititation, so save timetamp
             solititation_timestamps[recieved_interface] = time.time()
-            send_interface("0:0:0:0", ALL_NODES_LOC, recieved_interface, response, PackageType.CONTROL_PACKAGE)
+            _send(
+                "0:0:0:0", response, discovery.DISCOVERY_NEXT_HEADER,
+                recieved_interface, ALL_NODES_LOC
+            )
         # Forward discovery message to other interfaces
-        for interface in locs_joined:
-            if interface == recieved_interface:
+        for loc in locs_joined:
+            if loc == recieved_interface:
                 continue
             mutable_message = bytearray(message)
             if mutable_message[7] > 0:
                 # Decrement hop limit
                 mutable_message[7] -= 1
-                link.send(interface, PackageType.CONTROL_PACKAGE, bytes(mutable_message))
+                link.send(map_locator_to_interface(loc), bytes(mutable_message))
+    else:
+        in_queues.setdefault(
+                next_header, collections.deque(maxlen=None)
+        ).append((
+            data, src_nid, dst_nid
+        ))
 
 
 # Receive from queue
@@ -248,31 +240,33 @@ class ReceiveThread(threading.Thread):
 class SolititationThread(threading.Thread):
     def run(self):
         while True:
+            # sleep random time
+            time.sleep(random.random() * discovery.wait_time)
             try:
-                for interface in locs_joined:
-                    timestamp = solititation_timestamps.get(interface)
-                    # don't send solititation if solititation received from interface in passed discovery.wait_time
+                for loc in locs_joined:
+                    timestamp = solititation_timestamps.get(loc)
+                    # don't send solititation if solititation received from loc in passed discovery.wait_time
                     if timestamp == None or time.time() - timestamp > discovery.wait_time:
                         # nid doesn't matter for ALL_NODES_LOC
-                        send_interface("0:0:0:0", ALL_NODES_LOC, interface, discovery.get_solititation(interface), PackageType.CONTROL_PACKAGE)
-                        solititation_timestamps[interface] = time.time()
+                        _send(
+                            "0:0:0:0", discovery.get_solititation(loc), discovery.DISCOVERY_NEXT_HEADER,
+                            map_locator_to_interface(loc), ALL_NODES_LOC
+                        )
+                        solititation_timestamps[loc] = time.time()
             except NetworkException as e:
                 print("Error sending solicitation message: %s" % e)
-            time.sleep(discovery.wait_time)
 
 
 def startup():
     config_section = util.config["network"]
     
-    global locs_joined, local_loc
+    global locs_joined
     locs_joined = [loc.strip() for loc in config_section["locators"].split(",")]
     for loc in locs_joined:
-        link.join(loc, PackageType.CONTROL_PACKAGE)
-        link.join(loc, PackageType.DATA_PACKAGE)
+        link.join(loc)
         # For locs joined, send to own interface
         # Timestamp of None indicates that this is a non-expiring mapping
         loc_to_interface[loc] = loc, None
-    local_loc = locs_joined[0]
 
     global local_nid
     if "nid" in config_section:

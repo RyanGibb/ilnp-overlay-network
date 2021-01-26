@@ -7,14 +7,9 @@ import util
 joined_mcast_grps = set()
 
 
-
-# Transforms locators (coresponding to an interface) into a multicast address.
-# pkg_type should be PackageType.DATA_PACKAGE or PackageType.CONTROL_PACKAGE
+# Transforms locators into a multicast address (an interface in our overlay network).
 # loc should be a 64 bit hex string
-def get_mcast_grp(loc, pkg_type):
-    # 16 bit hex representation of package type (modulo 2^16)
-    pkg_type_hex = format(pkg_type % 65536, "x")
-    
+def _get_mcast_grp(loc):    
     # 16 bit hex representation of user ID (modulo 2^16)
     uid_hex = format(os.getuid() % 65536, "x")
 
@@ -27,23 +22,22 @@ def get_mcast_grp(loc, pkg_type):
     # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     # |        Multicast Prefix       |             UNUSED            |
     # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    # |         Package Type          |            User ID            |
+    # |            User ID            |             UNUSED            |
     # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     # |                                                               |
     # +                              Loc                              +
     # |                                                               |
     # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    return "%s:0:%s:%s:%s%%%s" % (
+    return "%s:0:%s:0:%s%%%s" % (
         mcast_prefix,
-        pkg_type_hex,
         uid_hex,
         loc,
         mcast_interface
     )
 
 
-def send(interface, pkg_type, message):
-    mcast_grp = get_mcast_grp(interface, pkg_type)
+def send(interface, message):
+    mcast_grp = _get_mcast_grp(interface)
     if mcast_grp not in joined_mcast_grps:
         raise IOError("Not joined multicast group '%s'" % mcast_grp)
     (family, socktype, proto, canonname, sockaddr) = socket.getaddrinfo(
@@ -65,8 +59,8 @@ def send(interface, pkg_type, message):
         ))
 
 
-def join(interface, pkg_type):
-    mcast_grp = get_mcast_grp(interface, pkg_type)
+def join(interface):
+    mcast_grp = _get_mcast_grp(interface)
     if mcast_grp in joined_mcast_grps:
         raise IOError("Already joined multicast group '%s'" % mcast_grp)
     (family, socktype, proto, canonname, sockaddr) = socket.getaddrinfo(
@@ -115,19 +109,18 @@ def receive():
     )
     from_ip_without_interface = from_address[0]
 
-    # Extract packet type from multicast group
-    pkg_type = int.from_bytes(to_address[4:6], byteorder="big")
+    mcast_grp = util.bytes_to_hex(to_address)
 
     # Extract locator the packet was recived from from multicast group
-    recived_loc = util.bytes_to_hex(to_address[8:16])
+    recived_interface = util.bytes_to_hex(to_address[8:16])
 
     if log_file != None:
         util.write_log(log_file, "%-60s -> %-60s %s" % (
             "[%s]:%s" % (from_ip, from_port),
-            "[%s]:%d" % (util.bytes_to_hex(to_address), mcast_port),
+            "[%s]:%d" % (mcast_grp, mcast_port),
             message
         ))
-    return message, pkg_type, recived_loc, from_ip_without_interface
+    return message, recived_interface, from_ip_without_interface
 
 
 def startup():

@@ -3,6 +3,8 @@ import struct
 import util
 from util import NetworkException
 
+DISCOVERY_NEXT_HEADER = 43
+
 # hostnames   -> identifiers
 hst_to_nid = {}
 # identifiers -> locators
