@@ -54,10 +54,13 @@ class ReceiveThread(threading.Thread):
                     src_loc, src_nid,
                     dst_loc, dst_nid
                 ) = network.receive(PROTOCOL_NEXT_HEADER)
-            except NetworkException:
+            # Input queue empty (or non-existant) for next header PROTOCOL_NEXT_HEADER
+            except (IndexError, KeyError):
                 # TODO wait?
                 time.sleep(1)
                 continue
+            except :
+                raise NetworkException("Invalid next header: %d" % PROTOCOL_NEXT_HEADER)
             header = message[:2]
             port_bytes = struct.unpack("!2s", header)[0]
             port = util.bytes_to_int(port_bytes)

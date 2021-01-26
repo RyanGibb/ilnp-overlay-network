@@ -47,7 +47,11 @@ loc_to_interface = {}
 
 def get_interface(loc):
     # Interface is a locator that identifies the network to foward the packet to.
-    interface, timestamp = loc_to_interface.get(loc)
+    entry = loc_to_interface.get(loc)
+    if entry != None:
+        interface, timestamp = entry
+    else:
+        return None
     # If mapping expired (timestamp == None means this is a non-expiring mapping)
     if interface != None and timestamp != None and time.time() - timestamp > backwards_learning_ttl:
         loc_to_interface[loc] = None
@@ -134,6 +138,8 @@ class SendThread(threading.Thread):
         while True:
             try:
                 _send(*out_queue.popleft())
+            except NetworkException as e:
+                print("Error sending: %s" % e)
             except IndexError:
                 # TODO wait here?
                 continue
@@ -218,13 +224,8 @@ def _receive():
 
 # Receive from queue
 def receive(next_header):
-    # Raises IndexError if no elements present
-    try:
-        return in_queues[next_header].popleft()
-    except IndexError:
-        raise NetworkException("Input queue empty for next header: %d" % next_header)
-    except KeyError:
-        raise NetworkException("Invalid next")
+    # Raises IndexError if no elements present, or KeyError if no queue exists
+    return in_queues[next_header].popleft()
 
 
 # Recieves messages and adds them to recieve queue
@@ -232,7 +233,10 @@ class ReceiveThread(threading.Thread):
     def run(self):
         # Queues by next header
         while True:
-            _receive()        
+            try:
+                _receive()
+            except NetworkException as e:
+                print("Error recieving: %s" % e)
 
 
 class SolititationThread(threading.Thread):
@@ -243,8 +247,8 @@ class SolititationThread(threading.Thread):
                     # TODO don't send solititation if solititation received from interface in passed discovery.wait_time
                     # nid doesn't matter for ALL_NODES_LOC
                     send_interface("0:0:0:0", ALL_NODES_LOC, interface, discovery.get_solititation(interface), PackageType.CONTROL_PACKAGE)
-            except:
-                pass
+            except NetworkException as e:
+                print("Error sending solicitation message: %s" % e)
             time.sleep(discovery.wait_time)
 
 
