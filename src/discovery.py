@@ -92,8 +92,12 @@ def startup(local_nid_param, locs_joined):
     global local_hst
     local_hst = config_section["hostname"]
 
+    # Time between sending solititations in seconds
     global wait_time
-    wait_time = config_section.getint("wait_time")
+    if "wait_time" in config_section:
+        wait_time = config_section["wait_time"]
+    else:
+        wait_time = 10
 
     global local_nid
     local_nid = local_nid_param

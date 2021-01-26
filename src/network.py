@@ -260,7 +260,10 @@ def startup():
     # TODO add collision detection
 
     global default_hop_limit
+    if "default_hop_limit" in config_section:
     default_hop_limit = config_section["default_hop_limit"]
+    else:
+        default_hop_limit = 3
 
     global log_file
     if "log" in config_section and config_section.getboolean("log"):
