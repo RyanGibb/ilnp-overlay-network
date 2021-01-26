@@ -44,6 +44,10 @@ in_queues = {}
 # Populated by backwards learning.
 loc_to_interface = {}
 
+# Maps interface identifiers (locators) to timestamps of the
+# last solititation recieved on that interface.
+solititation_timestamps = {}
+
 
 def get_interface(loc):
     # Interface is a locator that identifies the network to foward the packet to.
@@ -210,6 +214,8 @@ def _receive():
     elif pkg_type == PackageType.CONTROL_PACKAGE:
         response = discovery.process_message(data, recieved_interface)
         if response != None:
+            # if response != None, then message was a solititation, so save timetamp
+            solititation_timestamps[recieved_interface] = time.time()
             send_interface("0:0:0:0", ALL_NODES_LOC, recieved_interface, response, PackageType.CONTROL_PACKAGE)
         # Forward discovery message to other interfaces
         for interface in locs_joined:
@@ -244,9 +250,12 @@ class SolititationThread(threading.Thread):
         while True:
             try:
                 for interface in locs_joined:
-                    # TODO don't send solititation if solititation received from interface in passed discovery.wait_time
-                    # nid doesn't matter for ALL_NODES_LOC
-                    send_interface("0:0:0:0", ALL_NODES_LOC, interface, discovery.get_solititation(interface), PackageType.CONTROL_PACKAGE)
+                    timestamp = solititation_timestamps.get(interface)
+                    # don't send solititation if solititation received from interface in passed discovery.wait_time
+                    if timestamp == None or time.time() - timestamp > discovery.wait_time:
+                        # nid doesn't matter for ALL_NODES_LOC
+                        send_interface("0:0:0:0", ALL_NODES_LOC, interface, discovery.get_solititation(interface), PackageType.CONTROL_PACKAGE)
+                        solititation_timestamps[interface] = time.time()
             except NetworkException as e:
                 print("Error sending solicitation message: %s" % e)
             time.sleep(discovery.wait_time)
