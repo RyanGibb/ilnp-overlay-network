@@ -37,11 +37,23 @@ out_queue = collections.deque(maxlen=None)
 # Map of input circular queues indexed by next header
 in_queues = {}
 
-# Map of locators to interfaces.
+# Map of locators to interfaces and their timestamp (seconds since epoch).
 # Note that interfaces are locators themselves,
 # but represent the network to forward the packet to,
 # to rather than the desination network.
+# Populated by backwards learning.
 loc_to_interface = {}
+
+
+def get_interface(loc):
+    # Interface is a locator that identifies the network to foward the packet to.
+    interface, timestamp = loc_to_interface.get(loc)
+    # If mapping expired (timestamp == None means this is a non-expiring mapping)
+    if interface != None and timestamp != None and time.time() - timestamp > backwards_learning_ttl:
+        loc_to_interface[loc] = None
+        return None
+    else:
+        return interface
 
 
 class PackageType():
@@ -103,8 +115,7 @@ def send_interface(nid, loc, interface, data, pkg_type=PackageType.DATA_PACKAGE)
 def _send(nid, data, pkg_type=PackageType.DATA_PACKAGE):
     # TODO multiple locs
     loc = discovery.get_locs(nid)[0]
-    # Interface is a locator that identifies the network to foward the packet to.
-    interface = loc_to_interface.get(loc)
+    interface = get_interface(loc)
     if interface not in locs_joined:
         raise NetworkException("No interface to loctor: %s" % loc)
     send_interface(nid, loc, interface, data, pkg_type)
@@ -162,18 +173,17 @@ def _receive():
         return
     
     # Add mapping from source locator to the interface the packet was recieved on
-    loc_to_interface[src_loc] = recieved_interface
+    loc_to_interface[src_loc] = recieved_interface, time.time()
 
     # If not for us, try to forward
     if dst_nid != local_nid and dst_loc != ALL_NODES_LOC:
-        interface = loc_to_interface.get(dst_loc)
+        interface = get_interface(dst_loc)
         if interface != None:
             mutable_message = bytearray(message)
             if mutable_message[7] > 0:
                 # Decrement hop limit
                 mutable_message[7] -= 1
                 link.send(interface, pkg_type, bytes(mutable_message))
-        # TODO else send solititation?
         return
 
     data = message[40:]
@@ -195,7 +205,6 @@ def _receive():
         response = discovery.process_message(data, recieved_interface)
         if response != None:
             send_interface("0:0:0:0", ALL_NODES_LOC, recieved_interface, response, PackageType.CONTROL_PACKAGE)
-        # TODO forward original message with reduced hop limit?
         # Forward discovery message to other interfaces
         for interface in locs_joined:
             if interface == recieved_interface:
@@ -248,7 +257,8 @@ def startup():
         link.join(loc, PackageType.CONTROL_PACKAGE)
         link.join(loc, PackageType.DATA_PACKAGE)
         # For locs joined, send to own interface
-        loc_to_interface[loc] = loc
+        # Timestamp of None indicates that this is a non-expiring mapping
+        loc_to_interface[loc] = loc, None
     local_loc = locs_joined[0]
 
     global local_nid
@@ -261,9 +271,16 @@ def startup():
 
     global default_hop_limit
     if "default_hop_limit" in config_section:
-    default_hop_limit = config_section["default_hop_limit"]
+        default_hop_limit = config_section["default_hop_limit"]
     else:
         default_hop_limit = 3
+    
+    # Time that locator to interface mappings learnt by backwards learning will be valid
+    global backwards_learning_ttl
+    if "backwards_learning_ttl" in config_section:
+        backwards_learning_ttl = config_section["backwards_learning_ttl"]
+    else:
+        backwards_learning_ttl = 20
 
     global log_file
     if "log" in config_section and config_section.getboolean("log"):
