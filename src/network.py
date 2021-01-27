@@ -132,7 +132,8 @@ class SendThread(threading.Thread):
             try:
                 _send(*out_queue.popleft())
             except NetworkException as e:
-                print("Error sending: %s" % e)
+                if log_file != None:
+                    util.write_log(log_file, "Error sending: %s" % e)
             except IndexError:
                 # TODO wait here?
                 continue
@@ -234,7 +235,8 @@ class ReceiveThread(threading.Thread):
             try:
                 _receive()
             except NetworkException as e:
-                print("Error recieving: %s" % e)
+                if log_file != None:
+                    util.write_log(log_file, "Error recieving: %s" % e)
 
 
 class SolititationThread(threading.Thread):
