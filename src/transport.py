@@ -32,7 +32,7 @@ class Socket:
         message = header + data
         network.send(remote_nid, message, PROTOCOL_NEXT_HEADER)
         if log_file != None:
-            util.write_log(log_file, "%-60s <- %-60s %s" % (
+            util.write_log(log_file, "%-30s <- %-30s %s" % (
                 "[%s]:%d" % remote,
                 "%s" % (network.local_nid),
                 data

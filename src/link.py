@@ -52,8 +52,8 @@ def send(interface, message):
     sock.sendto(message, sockaddr)
 
     if log_file != None:
-        util.write_log(log_file, "%-60s <- %-60s %s" % (
-            "[%s]:%d" % (mcast_grp, mcast_port),
+        util.write_log(log_file, "%-45s <- %-45s %s" % (
+            "[%s]:%d" % (mcast_grp.split("%")[0], mcast_port),
             "[%s]:%d" % (local_addr, mcast_port),
             message
         ))
@@ -115,8 +115,8 @@ def receive():
     recived_interface = util.bytes_to_hex(to_address[8:16])
 
     if log_file != None:
-        util.write_log(log_file, "%-60s -> %-60s %s" % (
-            "[%s]:%s" % (from_ip, from_port),
+        util.write_log(log_file, "%-45s -> %-45s %s" % (
+            "[%s]:%s" % (from_ip_without_interface, from_port),
             "[%s]:%d" % (mcast_grp, mcast_port),
             message
         ))

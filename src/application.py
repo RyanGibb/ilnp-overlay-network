@@ -36,4 +36,6 @@ def heartbeat():
         time.sleep(1)
 
 if __name__ == "__main__":
-    heartbeat()
+    if REMOTE_HOSTNAME != "":
+        print("Starting heartbeat...")
+        heartbeat()

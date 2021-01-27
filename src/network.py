@@ -43,9 +43,6 @@ in_queues = {}
 # Populated by backwards learning.
 loc_to_interface = {}
 
-# Maps interfaces to timestamps of the last solititation recieved on that interface.
-solititation_timestamps = {}
-
 
 def map_locator_to_interface(loc):
     # Interface is a locator that identifies the network to foward the packet to.
@@ -111,7 +108,7 @@ def _send(nid, data, next_header, interface=None, loc=None):
     link.send(interface, message)
 
     if log_file != None:
-        util.write_log(log_file, "%-4s %-90s <- %-60s %s" % (
+        util.write_log(log_file, "%-4s %-45s <- %-30s %s" % (
             "(%d)" % header[7], # hop limit
             ":".join([loc, nid]) + "%" + interface,
             ":".join([local_loc, local_nid]),
@@ -188,7 +185,7 @@ def _receive():
 
     data = message[40:]
     if log_file != None:
-        util.write_log(log_file, "%-4s %-90s -> %-60s %s" % (
+        util.write_log(log_file, "%-4s %-45s -> %-30s %s" % (
             "(%d)" % header[7], # hop limit
             ":".join([src_loc, src_nid]) + "%" + recieved_interface,
             ":".join([dst_loc, dst_nid]),
@@ -199,11 +196,14 @@ def _receive():
         response = discovery.process_message(data, recieved_interface)
         if response != None:
             # if response != None, then message was a solititation, so save timetamp
-            solititation_timestamps[recieved_interface] = time.time()
-            _send(
-                "0:0:0:0", response, discovery.DISCOVERY_NEXT_HEADER,
-                recieved_interface, ALL_NODES_LOC
-            )
+            global solititation_timestamp # timestamp of last recieved solititation
+            solititation_timestamp = time.time()
+            # send advertisement to all interfaces
+            for loc in locs_joined:
+                _send(
+                    "0:0:0:0", response, discovery.DISCOVERY_NEXT_HEADER,
+                    map_locator_to_interface(loc), ALL_NODES_LOC
+                )
         # Forward discovery message to other interfaces
         for loc in locs_joined:
             if loc == recieved_interface:
@@ -242,21 +242,22 @@ class ReceiveThread(threading.Thread):
 class SolititationThread(threading.Thread):
     def run(self):
         while True:
-            # sleep random time
-            time.sleep(random.random() * discovery.wait_time)
             try:
-                for loc in locs_joined:
-                    timestamp = solititation_timestamps.get(loc)
-                    # don't send solititation if solititation received from loc in passed discovery.wait_time
-                    if timestamp == None or time.time() - timestamp > discovery.wait_time:
+                global solititation_timestamp
+                # don't send solititation if solititation received in passed discovery.wait_time
+                if solititation_timestamp == 0 or time.time() - solititation_timestamp > discovery.wait_time:
+                    for loc in locs_joined:
                         # nid doesn't matter for ALL_NODES_LOC
                         _send(
                             "0:0:0:0", discovery.get_solititation(loc), discovery.DISCOVERY_NEXT_HEADER,
-                            map_locator_to_interface(loc), ALL_NODES_LOC
+                            loc, ALL_NODES_LOC
                         )
-                        solititation_timestamps[loc] = time.time()
+                    solititation_timestamp = time.time()
+                # sleep a random time from (discovery.wait_time / 2) to discovery.wait_time
+                time.sleep(random.random() * discovery.wait_time / 2 + discovery.wait_time / 2)
             except NetworkException as e:
-                print("Error sending solicitation message: %s" % e)
+                if log_file != None:
+                    util.write_log(log_file, "Error sending solicitation: %s" % e)
 
 
 def startup():
@@ -289,7 +290,7 @@ def startup():
     if "backwards_learning_ttl" in config_section:
         backwards_learning_ttl = config_section["backwards_learning_ttl"]
     else:
-        backwards_learning_ttl = 20
+        backwards_learning_ttl = 30
 
     global log_file
     if "log" in config_section and config_section.getboolean("log"):
@@ -307,6 +308,8 @@ def startup():
     # Discovery startup should run after link startup
     discovery.startup(local_nid, locs_joined)
 
+    global solititation_timestamp
+    solititation_timestamp = 0
     # Start thread to send solititation messages from discovery module
     SolititationThread().start()
 
