@@ -27,14 +27,17 @@ class Socket:
     
     def send(self, remote, data):
         remote_nid, remote_port = remote
-        # Transport header is just a 16 bit port
-        header = struct.pack("!2s", util.int_to_bytes(remote_port, 2))
+        # Transport header is just 16 bit source and destination ports
+        header = struct.pack("!2s2s",
+            util.int_to_bytes(self.port, 2),
+            util.int_to_bytes(remote_port, 2)
+        )
         message = header + data
         network.send(remote_nid, message, PROTOCOL_NEXT_HEADER)
         if log_file != None:
             util.write_log(log_file, "%-30s <- %-30s %s" % (
                 "[%s]:%d" % remote,
-                "%s" % (network.local_nid),
+                "[%s]:%d" % (network.local_nid, self.port),
                 data
             ))
 
@@ -57,22 +60,22 @@ class ReceiveThread(threading.Thread):
                 continue
             except :
                 raise NetworkException("Invalid next header: %d" % PROTOCOL_NEXT_HEADER)
-            header = message[:2]
-            port_bytes = struct.unpack("!2s", header)[0]
-            port = util.bytes_to_int(port_bytes)
-            data = message[2:]
+            header = message[:4]
+            sre_port_bytes, dst_port_bytes = struct.unpack("!2s2s", header)
+            src_port = util.bytes_to_int(sre_port_bytes)
+            dst_port = util.bytes_to_int(dst_port_bytes)
+            data = message[4:]
             # drop if not valid port (if there's no socket bound to this port)
-            if port not in in_queues:
+            if dst_port not in in_queues:
                 continue
-            # TODO do something with dst like support mcast
             in_queues.setdefault(
-                port, collections.deque(maxlen=None)
-            ).append(data)
+                dst_port, collections.deque(maxlen=None)
+            ).append((data, (src_nid, src_port)))
 
             if log_file != None:
                 util.write_log(log_file, "%-30s -> %-30s %s" % (
-                    src_nid,
-                    "[%s]:%d" % (dst_nid, port),
+                    "[%s]:%d" % (src_nid, src_port),
+                    "[%s]:%d" % (dst_nid, dst_port),
                     data
                 ))
 
