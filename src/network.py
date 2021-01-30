@@ -103,10 +103,6 @@ def _send(nid, data, next_header, interface=None, loc=None):
         util.hex_to_bytes(loc,            8),
         util.hex_to_bytes(nid,            8),
     )
-
-    message = header + data
-    link.send(interface, message)
-
     if log_file != None:
         util.write_log(log_file, "%-4s %-45s <- %-30s %s" % (
             "(%d)" % header[7], # hop limit
@@ -114,6 +110,8 @@ def _send(nid, data, next_header, interface=None, loc=None):
             ":".join([local_loc, local_nid]),
             data
         ))
+    message = header + data
+    link.send(interface, message)
 
 
 # Add to send queue.

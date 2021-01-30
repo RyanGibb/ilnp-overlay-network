@@ -33,13 +33,14 @@ class Socket:
             util.int_to_bytes(remote_port, 2)
         )
         message = header + data
-        network.send(remote_nid, message, PROTOCOL_NEXT_HEADER)
         if log_file != None:
             util.write_log(log_file, "%-30s <- %-30s %s" % (
                 "[%s]:%d" % remote,
                 "[%s]:%d" % (network.local_nid, self.port),
                 data
             ))
+        network.send(remote_nid, message, PROTOCOL_NEXT_HEADER)
+        
 
     def receive(self):
         try:

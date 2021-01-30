@@ -49,14 +49,13 @@ def send(interface, message):
         raise IOError("Message length larger than buffer size: %d > %d" %
             (len(message), buffer_size)
         )
-    sock.sendto(message, sockaddr)
-
     if log_file != None:
         util.write_log(log_file, "%-45s <- %-45s %s" % (
             "[%s]:%d" % (mcast_grp.split("%")[0], mcast_port),
             "[%s]:%d" % (local_addr, mcast_port),
             message
         ))
+    sock.sendto(message, sockaddr)
 
 
 def join(interface):
