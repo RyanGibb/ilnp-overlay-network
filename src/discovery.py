@@ -10,18 +10,30 @@ hst_to_nid = {}
 # identifiers -> locators
 nid_to_locs = {}
 
+# identifiers -> hostnames
+nid_to_hst = {}
 
-def getaddrinfo(hostname, port):
-    nid = hst_to_nid.get(hostname)
+
+def getaddrinfo(addr):
+    hst, port = addr
+    nid = hst_to_nid.get(hst)
     if nid == None:
-        raise NetworkException("No mapping for hostname: '%s'" % hostname)
-    return (nid, port)
+        raise NetworkException("No mapping for hostname '%s'" % hst)
+    return nid, port
+
+
+def gethostbyaddr(addr):
+    nid, port = addr
+    hst = nid_to_hst.get(nid)
+    if hst == None:
+        raise NetworkException("No mapping for nid '%s'" % nid)
+    return hst, port
 
 
 def get_locs(nid):
     locs = nid_to_locs.get(nid)
     if locs == None:
-        raise NetworkException("No mapping for nid: '%s'" % nid)
+        raise NetworkException("No mapping for nid '%s'" % nid)
     return list(locs)
 
 
@@ -62,6 +74,7 @@ def process_message(message, recieved_interface):
     hst = message[17:].decode('utf-8')
     
     hst_to_nid[hst] = nid
+    nid_to_hst[nid] = hst
     # Can have multiple locators for one nid
     nid_to_locs.setdefault(nid, set()).add(loc)
 
@@ -100,7 +113,7 @@ def startup(local_nid_param, locs_joined):
         wait_time = config_section["wait_time"]
     else:
         wait_time = 10
-
+    
     global local_nid
     local_nid = local_nid_param
 

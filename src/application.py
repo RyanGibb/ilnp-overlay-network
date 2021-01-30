@@ -13,19 +13,29 @@ REMOTE_PORT     = util.config["application"].getint("remote_port")
 def heartbeat():
     sock = transport.Socket()
     sock.bind(PORT)
+    
+    if REMOTE_HOSTNAME != None and REMOTE_HOSTNAME != "":
+        remote = (REMOTE_HOSTNAME, REMOTE_PORT)
+    else:
+        remote = None
+
     while True:
-        message = "%s | %s" % (str(datetime.now()), HOSTNAME)
         try:
-            if REMOTE_HOSTNAME != None and REMOTE_HOSTNAME != "":
-                remote_addr = discovery.getaddrinfo(REMOTE_HOSTNAME, REMOTE_PORT)
+            if remote != None:
+                message = "%s | %s" % (str(datetime.now()), HOSTNAME)
+                remote_addr = discovery.getaddrinfo(remote)
                 sock.send(remote_addr, message.encode('utf-8'))
-                print("%-30s <- %s" % ("[%s]:%d" % remote_addr, message))
+                print("%-30s <- %s" % ("%s:%d" % remote, message))
         except transport.NetworkException as e:
             print("Network Exception: %s" % e.message)
+        
         while True:
             try:
                 message, src_addr = sock.receive()
-                print("%-30s -> %s" % ("[%s]:%d" % src_addr, message.decode('utf-8')))
+                print("%-30s -> %s" % (
+                        "%s:%d" % discovery.gethostbyaddr(src_addr),
+                        message.decode('utf-8')
+                ))
             except transport.NetworkException as e:
                 break
         time.sleep(1)
