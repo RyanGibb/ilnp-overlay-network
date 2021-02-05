@@ -33,6 +33,8 @@ STATIC_MASKS_FIELD = (
 
 ALL_NODES_LOC = 'ff02:0:0:1'
 
+LOC_UPDATE_NEXT_HEADER = 44
+
 # Output circular queues
 out_queue = collections.deque(maxlen=None)
 # Map of input circular queues indexed by next header
@@ -126,12 +128,12 @@ class SendThread(threading.Thread):
         while True:
             try:
                 _send(*out_queue.popleft())
-            except NetworkException as e:
-                if log_file != None:
-                    util.write_log(log_file, "Error sending: %s" % e)
             except IndexError:
                 # TODO wait here?
                 continue
+            except Exception as e:
+                if log_file != None:
+                    util.write_log(log_file, "Error sending: %s" % e)
 
 
 # Recieve now
@@ -211,6 +213,9 @@ def _receive():
                 # Decrement hop limit
                 mutable_message[7] -= 1
                 link.send(map_locator_to_interface(loc), bytes(mutable_message))
+    elif next_header == LOC_UPDATE_NEXT_HEADER:
+        # TODO process locator updates
+        pass
     else:
         in_queues.setdefault(
                 next_header, collections.deque(maxlen=None)
@@ -258,11 +263,42 @@ class SolititationThread(threading.Thread):
                     util.write_log(log_file, "Error sending solicitation: %s" % e)
 
 
+class MoveThread(threading.Thread):
+    def __init__(self, loc_cycle, move_sleep):
+        threading.Thread.__init__(self)
+        self.loc_cycle = loc_cycle
+        self.move_sleep = move_sleep
+        self.loc_cycle_index = 0
+
+    def run(self):
+        while True:
+            time.sleep(self.move_sleep)
+            try:
+                new_loc_cycle_index = (self.loc_cycle_index + 1) % len(self.loc_cycle)
+                global locs_joined
+                if log_file != None:
+                    util.write_log(log_file, "Moving from %s to %s" % (locs_joined, self.loc_cycle[new_loc_cycle_index]))
+                for loc in self.loc_cycle[new_loc_cycle_index]:
+                    if loc not in self.loc_cycle[self.loc_cycle_index]:
+                        link.join(loc)
+                for loc in locs_joined:
+                    if loc not in self.loc_cycle[new_loc_cycle_index]:
+                        # TODO send locator updates
+                        # TODO clear send queue before leaving?
+                        link.leave(loc)
+                self.loc_cycle_index = new_loc_cycle_index
+                locs_joined = self.loc_cycle[self.loc_cycle_index]
+            except Exception as e:
+                if log_file != None:
+                    util.write_log(log_file, "Error moving: %s" % e)
+
+
 def startup():
     config_section = util.config["network"]
     
     global locs_joined
-    locs_joined = [loc.strip() for loc in config_section["locators"].split(",")]
+    loc_cycle = [[loc.strip() for loc in cycle.split(",")] for cycle in config_section["locators"].split("-")]
+    locs_joined = loc_cycle[0]
     for loc in locs_joined:
         link.join(loc)
         # For locs joined, send to own interface
@@ -310,6 +346,13 @@ def startup():
     solititation_timestamp = 0
     # Start thread to send solititation messages from discovery module
     SolititationThread().start()
+
+    if len(loc_cycle) > 1:
+        if "move_sleep" in config_section:
+            move_sleep = config_section["move_sleep"]
+        else:
+            move_sleep = 10
+        MoveThread(loc_cycle, move_sleep).start()
 
 
 startup()

@@ -86,6 +86,34 @@ def join(interface):
         util.write_log(log_file, ("Joined %s" % mcast_grp))
 
 
+def leave(interface):
+    mcast_grp = _get_mcast_grp(interface)
+    if mcast_grp not in joined_mcast_grps:
+        raise IOError("Not joined multicast group '%s'" % mcast_grp)
+    (family, socktype, proto, canonname, sockaddr) = socket.getaddrinfo(
+        mcast_grp, mcast_port,
+        family=socket.AF_INET6, type=socket.SOCK_DGRAM
+    )[0]
+    (mcast_addr, mcast_sock_port, flow_info, scope_id) = sockaddr
+
+    # Remove interface suffix
+    mcast_addr = mcast_addr.split("%")[0]
+    # Binary representation of mcast_addr. Corresponds to struct in6_addr.
+    mcast_group_bin = socket.inet_pton(socket.AF_INET6, mcast_addr)
+
+    # Corresponds to struct in6_mreq
+    # with multicast group and interface id in binary representations.
+    # 16s = 16 chars (bytes) for mcast_group_bin
+    # i = signed int for scope_id
+    mreq = struct.pack("16si", mcast_group_bin, scope_id)
+    sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_LEAVE_GROUP, mreq)
+
+    joined_mcast_grps.remove(mcast_grp)
+
+    if log_file != None:
+        util.write_log(log_file, ("Removed %s" % mcast_grp))
+
+
 def receive():
     # buffer_size byte buffer and therefor max message size
     # Ancillary data buffer for IPV6_PKTINFO data item of 20 bytes:
