@@ -128,6 +128,15 @@ def process_message(message, recieved_interface):
         return None
 
 
+def locator_update(nid, new_locs):
+    timestamp = time.time()
+    nid_to_locs[nid] = [(loc, timestamp) for loc in new_locs]
+    if log_file != None:
+        util.write_log(log_file, "\n\t%s" % (
+            "%s => %s" % (nid, nid_to_locs[nid])
+        ))
+
+
 def startup(local_nid_param, locs_joined):
     config_section = util.config["discovery"]
 

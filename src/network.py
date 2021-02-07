@@ -45,6 +45,12 @@ in_queues = {}
 # Populated by backwards learning.
 loc_to_interface = {}
 
+# Map of Identifier-Locator Vectors to timestamps.
+# Keeps track of active unicast ILNP sessions for determining
+# where to send locator updates.
+# Active here mans send in the past active_uncast_session_ttl seconds.
+active_ilvs =   {}
+
 
 def map_locator_to_interface(loc):
     # Interface is a locator that identifies the network to foward the packet to.
@@ -106,14 +112,16 @@ def _send(nid, data, next_header, interface=None, loc=None):
         util.hex_to_bytes(nid,            8),
     )
     if log_file != None:
-        util.write_log(log_file, "%-4s %-45s <- %-30s %s" % (
+        util.write_log(log_file, "%-4s %-45s <- %-30s %-5s %s" % (
             "(%d)" % header[7], # hop limit
             ":".join([loc, nid]) + "%" + interface,
             ":".join([local_loc, local_nid]),
+            "(%d)" % next_header,
             data
         ))
     message = header + data
     link.send(interface, message)
+    active_ilvs[(loc, nid)] = time.time()
 
 
 # Add to send queue.
@@ -185,10 +193,11 @@ def _receive():
 
     data = message[40:]
     if log_file != None:
-        util.write_log(log_file, "%-4s %-45s -> %-30s %s" % (
+        util.write_log(log_file, "%-4s %-45s -> %-30s %-5s %s" % (
             "(%d)" % header[7], # hop limit
             ":".join([src_loc, src_nid]) + "%" + recieved_interface,
             ":".join([dst_loc, dst_nid]),
+            "(%d)" % next_header,
             data
         ))
 
@@ -214,9 +223,15 @@ def _receive():
                 mutable_message[7] -= 1
                 link.send(map_locator_to_interface(loc), bytes(mutable_message))
     elif next_header == LOC_UPDATE_NEXT_HEADER:
-        # TODO process locator updates
-        pass
+        # Process locator updates
+        new_locs = [util.bytes_to_hex(data[8*i:8*(i+1)]) for i in range(int(len(data)/8))]
+        # If a locator update advertisement, i.e. not a locator update acknowledgement
+        if len(new_locs) > 0:
+            discovery.locator_update(src_nid, new_locs)
+            # Send locator update acknowledgement (currently only used for backwards learning)
+            _send(src_nid, b"", LOC_UPDATE_NEXT_HEADER, interface=recieved_interface, loc=new_locs[0])
     else:
+        active_ilvs[(src_loc, src_nid)] = time.time()
         in_queues.setdefault(
                 next_header, collections.deque(maxlen=None)
         ).append((
@@ -275,19 +290,35 @@ class MoveThread(threading.Thread):
             time.sleep(self.move_sleep)
             try:
                 new_loc_cycle_index = (self.loc_cycle_index + 1) % len(self.loc_cycle)
+                new_locs_joined = self.loc_cycle[new_loc_cycle_index]
                 global locs_joined
                 if log_file != None:
-                    util.write_log(log_file, "Moving from %s to %s" % (locs_joined, self.loc_cycle[new_loc_cycle_index]))
-                for loc in self.loc_cycle[new_loc_cycle_index]:
+                    util.write_log(log_file, "Moving from %s to %s" % (locs_joined, new_locs_joined))
+                for loc in new_locs_joined:
                     if loc not in self.loc_cycle[self.loc_cycle_index]:
                         link.join(loc)
+                for ilv, timestamp in active_ilvs.items():
+                    if time.time() - timestamp > active_uncast_session_ttl:
+                        del active_ilvs[ilv]
+                        continue
+                    dst_loc, dst_nid = ilv
+                    data = b"".join([util.hex_to_bytes(joined_loc, 8) for joined_loc in new_locs_joined])
+                    # Send locator update advertisement on interface to first new locator
+                    _send(dst_nid, data, LOC_UPDATE_NEXT_HEADER, interface=new_locs_joined[0], loc=dst_loc)
+                # Reset backwards learning
+                global loc_to_interface
+                to_remove=[]
+                for mapped_loc, (interface, timestamp) in loc_to_interface.items():
+                    if interface not in new_locs_joined:
+                        to_remove.append(mapped_loc)
+                for mapped_loc in to_remove:
+                    del loc_to_interface[mapped_loc]
+
                 for loc in locs_joined:
-                    if loc not in self.loc_cycle[new_loc_cycle_index]:
-                        # TODO send locator updates
-                        # TODO clear send queue before leaving?
+                    if loc not in new_locs_joined:
                         link.leave(loc)
                 self.loc_cycle_index = new_loc_cycle_index
-                locs_joined = self.loc_cycle[self.loc_cycle_index]
+                locs_joined = new_locs_joined
             except Exception as e:
                 if log_file != None:
                     util.write_log(log_file, "Error moving: %s" % e)
@@ -325,6 +356,12 @@ def startup():
         backwards_learning_ttl = config_section["backwards_learning_ttl"]
     else:
         backwards_learning_ttl = 30
+    
+    global active_uncast_session_ttl
+    if "active_uncast_session_ttl" in config_section:
+        active_uncast_session_ttl = config_section["active_uncast_session_ttl"]
+    else:
+        active_uncast_session_ttl = 30
 
     global log_file
     if "log" in config_section and config_section.getboolean("log"):
