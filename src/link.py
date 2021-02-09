@@ -36,7 +36,7 @@ def _get_mcast_grp(loc):
     )
 
 
-def send(interface, message):
+def send(interface, data):
     mcast_grp = _get_mcast_grp(interface)
     if mcast_grp not in joined_mcast_grps:
         raise IOError("Not joined multicast group '%s'" % mcast_grp)
@@ -44,18 +44,18 @@ def send(interface, message):
         mcast_grp, mcast_port,
         family=socket.AF_INET6, type=socket.SOCK_DGRAM
     )[0]
-    # If message larger than buffer size message will be truncated
-    if len(message) > buffer_size:
-        raise IOError("Message length larger than buffer size: %d > %d" %
-            (len(message), buffer_size)
+    # If data larger than buffer size data will be truncated
+    if len(data) > buffer_size:
+        raise IOError("data length larger than buffer size: %d > %d" %
+            (len(data), buffer_size)
         )
     if log_file != None:
         util.write_log(log_file, "%-45s <- %-45s %s" % (
             "[%s]:%d" % (mcast_grp.split("%")[0], mcast_port),
             "[%s]:%d" % (local_addr, mcast_port),
-            message
+            (str(data[:61]) + '...') if len(data) > 64 else data
         ))
-    sock.sendto(message, sockaddr)
+    sock.sendto(data, sockaddr)
 
 
 def join(interface):
@@ -118,7 +118,7 @@ def receive():
     # buffer_size byte buffer and therefor max message size
     # Ancillary data buffer for IPV6_PKTINFO data item of 20 bytes:
     #  16 bytes for to_address and 4 bytes for interface_id
-    message, ancdata, msg_flags, from_address = sock.recvmsg(
+    data, ancdata, msg_flags, from_address = sock.recvmsg(
         buffer_size, socket.CMSG_SPACE(20)
     )
 
@@ -145,9 +145,9 @@ def receive():
         util.write_log(log_file, "%-45s -> %-45s %s" % (
             "[%s]:%s" % (from_ip_without_interface, from_port),
             "[%s]:%d" % (mcast_grp, mcast_port),
-            message
+            (str(data[:61]) + '...') if len(data) > 64 else data
         ))
-    return message, recived_interface, from_ip_without_interface
+    return data, recived_interface, from_ip_without_interface
 
 
 def startup():

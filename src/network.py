@@ -112,12 +112,11 @@ def _send(nid, data, next_header, interface=None, loc=None):
         util.hex_to_bytes(nid,            8),
     )
     if log_file != None:
-        util.write_log(log_file, "%-4s %-45s <- %-30s %-5s %s" % (
-            "(%d)" % header[7], # hop limit
+        util.write_log(log_file, "%-45s <- %-30s %s %s" % (
             ":".join([loc, nid]) + "%" + interface,
             ":".join([local_loc, local_nid]),
-            "(%d)" % next_header,
-            data
+            "(%3d, %2d, %2d)" % (payload_length, next_header, hop_limit),
+            (str(data[:29]) + '...') if len(data) > 32 else data
         ))
     message = header + data
     link.send(interface, message)
@@ -198,12 +197,11 @@ def _receive():
 
     data = message[40:]
     if log_file != None:
-        util.write_log(log_file, "%-4s %-45s -> %-30s %-5s %s" % (
-            "(%d)" % header[7], # hop limit
+        util.write_log(log_file, "%-45s -> %-30s %s %s" % (
             ":".join([src_loc, src_nid]) + "%" + recieved_interface,
             ":".join([dst_loc, dst_nid]),
-            "(%d)" % next_header,
-            data
+            "(%3d,%3d,%3d)" % (payload_length, next_header, hop_limit),
+            (str(data[:29]) + '...') if len(data) > 32 else data
         ))
 
     if next_header == discovery.DISCOVERY_NEXT_HEADER:

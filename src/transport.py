@@ -37,7 +37,7 @@ class Socket:
             util.write_log(log_file, "%-30s <- %-30s %s" % (
                 "[%s]:%d" % remote,
                 "[%s]:%d" % (network.local_nid, self.port),
-                data
+                (str(data[:29]) + '...') if len(data) > 32 else data
             ))
         network.send(remote_nid, message, PROTOCOL_NEXT_HEADER)
         
@@ -77,7 +77,7 @@ class ReceiveThread(threading.Thread):
                 util.write_log(log_file, "%-30s -> %-30s %s" % (
                     "[%s]:%d" % (src_nid, src_port),
                     "[%s]:%d" % (dst_nid, dst_port),
-                    data
+                    (str(data[:29]) + '...') if len(data) > 32 else data
                 ))
 
 
