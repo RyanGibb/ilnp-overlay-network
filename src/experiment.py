@@ -25,7 +25,7 @@ def heartbeat():
         try:
             if remote != None:
                 remote_addr = discovery.getaddrinfo(remote)
-                data=f.read(32*1024)
+                data=f.read(16*1024)
                 print("%-30s <- %s" % ("%s:%d" % remote, len(data)))
                 sock.send(remote_addr, data)
         except transport.NetworkException as e:
@@ -40,7 +40,7 @@ def heartbeat():
                 ))
             except transport.NetworkException as e:
                 break
-        time.sleep(1)
+        time.sleep(0.1)
 
 if __name__ == "__main__":
     heartbeat()
