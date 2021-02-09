@@ -255,7 +255,7 @@ class ReceiveThread(threading.Thread):
         while True:
             try:
                 _receive()
-            except NetworkException as e:
+            except Exception as e:
                 if log_file != None:
                     util.write_log(log_file, "Error recieving: %s" % e)
 
@@ -276,7 +276,7 @@ class SolititationThread(threading.Thread):
                     solititation_timestamp = time.time()
                 # sleep a random time from (discovery.wait_time / 2) to discovery.wait_time
                 time.sleep(random.random() * discovery.wait_time / 2 + discovery.wait_time / 2)
-            except NetworkException as e:
+            except Exception as e:
                 if log_file != None:
                     util.write_log(log_file, "Error sending solicitation: %s" % e)
 
