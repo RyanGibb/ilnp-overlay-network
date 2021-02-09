@@ -75,7 +75,7 @@ def _send(nid, data, next_header, interface=None, loc=None):
     if interface == None:
         interface = map_locator_to_interface(loc)
         if interface == None:
-            raise NetworkException("No interface to loctor: %s" % loc)
+            raise NetworkException("No interface to locator: %s" % loc)
     local_loc = interface
     # ILNPv6 header is of the form:
     # +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -121,7 +121,9 @@ def _send(nid, data, next_header, interface=None, loc=None):
         ))
     message = header + data
     link.send(interface, message)
-    active_ilvs[(loc, nid)] = time.time()
+    # Don't count discovery and locator update messages as active ilvs
+    if loc != ALL_NODES_LOC:
+        active_ilvs[(loc, nid)] = time.time()
 
 
 # Add to send queue.
