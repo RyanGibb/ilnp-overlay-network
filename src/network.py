@@ -184,13 +184,16 @@ def _receive():
 
     # If not for us, try to forward
     if dst_nid != local_nid and dst_loc != ALL_NODES_LOC:
-        interface = map_locator_to_interface(dst_loc)
-        if interface != None:
-            mutable_message = bytearray(message)
-            if mutable_message[7] > 0:
-                # Decrement hop limit
-                mutable_message[7] -= 1
-                link.send(interface, bytes(mutable_message))
+        # Only forward if the destination locator of the packet is different from
+        # the interface it was received on.
+        if recieved_interface != dst_loc:
+            interface = map_locator_to_interface(dst_loc)
+            if interface != None:
+                mutable_message = bytearray(message)
+                if mutable_message[7] > 0:
+                    # Decrement hop limit
+                    mutable_message[7] -= 1
+                    link.send(interface, bytes(mutable_message))
         return
 
     data = message[40:]
