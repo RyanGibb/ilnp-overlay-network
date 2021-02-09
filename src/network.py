@@ -115,7 +115,7 @@ def _send(nid, data, next_header, interface=None, loc=None):
         util.write_log(log_file, "%-45s <- %-30s %s %s" % (
             ":".join([loc, nid]) + "%" + interface,
             ":".join([local_loc, local_nid]),
-            "(%3d, %2d, %2d)" % (payload_length, next_header, hop_limit),
+            "(%5d, %2d, %2d)" % (payload_length, next_header, hop_limit),
             (str(data[:29]) + '...') if len(data) > 32 else data
         ))
     message = header + data
@@ -169,10 +169,10 @@ def _receive():
     payload_length = util.bytes_to_int(payload_length_bytes)
     next_header    = util.bytes_to_int(next_header_bytes)
     hop_limit      = util.bytes_to_int(hop_limit_bytes)
-    dst_nid        = util.bytes_to_hex(dst_nid_bytes)
-    src_nid        = util.bytes_to_hex(src_nid_bytes)
     src_loc        = util.bytes_to_hex(src_loc_bytes)
+    src_nid        = util.bytes_to_hex(src_nid_bytes)
     dst_loc        = util.bytes_to_hex(dst_loc_bytes)
+    dst_nid        = util.bytes_to_hex(dst_nid_bytes)
 
     # Ignore own messages, if they aren't to us
     if from_ip == link.local_addr and dst_nid != local_nid:
@@ -180,6 +180,8 @@ def _receive():
     
     # Add mapping from source locator to the interface the packet was recieved on
     loc_to_interface[src_loc] = recieved_interface, time.time()
+
+    data = message[40:]
 
     # If not for us, try to forward
     if dst_nid != local_nid and dst_loc != ALL_NODES_LOC:
@@ -192,15 +194,21 @@ def _receive():
                 if mutable_message[7] > 0:
                     # Decrement hop limit
                     mutable_message[7] -= 1
+                    hop_limit -= 1
                     link.send(interface, bytes(mutable_message))
+                    util.write_log(log_file, "%-45s <- %-30s %s %s" % (
+                        ":".join([dst_loc, dst_nid]) + "%" + interface,
+                        "*" + ":".join([src_loc, src_nid]),
+                        "(%5d, %2d, %2d)" % (payload_length, next_header, hop_limit),
+                        (str(data[:29]) + '...') if len(data) > 32 else data
+                    ))
         return
 
-    data = message[40:]
     if log_file != None:
         util.write_log(log_file, "%-45s -> %-30s %s %s" % (
             ":".join([src_loc, src_nid]) + "%" + recieved_interface,
             ":".join([dst_loc, dst_nid]),
-            "(%3d,%3d,%3d)" % (payload_length, next_header, hop_limit),
+            "(%5d,%3d,%3d)" % (payload_length, next_header, hop_limit),
             (str(data[:29]) + '...') if len(data) > 32 else data
         ))
 
