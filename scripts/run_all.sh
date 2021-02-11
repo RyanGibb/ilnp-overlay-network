@@ -13,11 +13,11 @@ trap clean_up SIGHUP SIGINT SIGTERM
 echo "Running..."
 for host in alice bob; do
 	command="$(tail -1 $(dirname $0)/run.sh | sed -e "s/\"\$mode\"/$mode/g" | sed -e "s/\"\$host\"/$host/g")"
-	ssh "$host"-"$method" "$command > "$mode"_"$host".log" &\
+	ssh "$host"-"$method" "$command >> "~/ilnp-overlay-network/logs/$mode"_"$host".log" &\
 	echo $host
 done
 
-python3 "$(dirname $0)"/../src/"$mode".py "$(dirname $0)"/../config/"$mode"/config.ini
+python3 "$(dirname $0)"/../src/"$mode".py "$(dirname $0)"/../config/"$mode"/config.ini >> "$(dirname $0)"/../logs/experiment_desktop.log
 echo "Exited desktop"
 read
 
