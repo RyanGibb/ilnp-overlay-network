@@ -56,8 +56,8 @@ class ReceiveThread(threading.Thread):
                 message, src_nid, dst_nid = network.receive(PROTOCOL_NEXT_HEADER)
             # Input queue empty (or non-existant) for next header PROTOCOL_NEXT_HEADER
             except (IndexError, KeyError):
-                # TODO wait?
-                time.sleep(1)
+                # Allow context switching
+                time.sleep(0)
                 continue
             except :
                 raise NetworkException("Invalid next header: %d" % PROTOCOL_NEXT_HEADER)

@@ -45,11 +45,10 @@ in_queues = {}
 # Populated by backwards learning.
 loc_to_interface = {}
 
-# Map of Identifier-Locator Vectors to timestamps.
-# Keeps track of active unicast ILNP sessions for determining
-# where to send locator updates.
-# Active here mans send in the past active_uncast_session_ttl seconds.
-active_ilvs =   {}
+# Map of identifiers to timestamps. Keeps track of active unicast ILNP sessions
+# for determining where to send locator updates.
+# Active here means sent in the past active_uncast_session_ttl seconds.
+active_nids =   {}
 
 
 def map_locator_to_interface(loc):
@@ -120,9 +119,9 @@ def _send(nid, data, next_header, interface=None, loc=None):
         ))
     message = header + data
     link.send(interface, message)
-    # Don't count discovery and locator update messages as active ilvs
+    # Don't count discovery and locator update messages as active
     if loc != ALL_NODES_LOC:
-        active_ilvs[(loc, nid)] = time.time()
+        active_nids[nid] = time.time()
 
 
 # Add to send queue.
@@ -245,7 +244,7 @@ def _receive():
             loc_update_ack = struct.pack("!?", False)
             _send(src_nid, loc_update_ack, LOC_UPDATE_NEXT_HEADER, interface=recieved_interface, loc=new_locs[0])
     else:
-        active_ilvs[(src_loc, src_nid)] = time.time()
+        active_nids[src_nid] = time.time()
         in_queues.setdefault(
                 next_header, collections.deque(maxlen=None)
         ).append((
@@ -314,14 +313,14 @@ class MoveThread(threading.Thread):
                 new_locs_joined_bytes = [util.hex_to_bytes(joined_loc, 8) for joined_loc in new_locs_joined]
                 # True for locator update advertisement
                 loc_update_advrt = struct.pack("!?" + "8s" * len(new_locs_joined), True, *new_locs_joined_bytes)
-                for ilv, timestamp in active_ilvs.items():
+                for dst_nid, timestamp in active_nids.items():
                     if time.time() - timestamp > active_uncast_session_ttl:
-                        del active_ilvs[ilv]
+                        del active_nids[dst_nid]
                         continue
-                    dst_loc, dst_nid = ilv
                     # Send locator update advertisement on interface to first new locator
                     # so backwards learning can be done on locator update.
-                    _send(dst_nid, loc_update_advrt, LOC_UPDATE_NEXT_HEADER, interface=new_locs_joined[0], loc=dst_loc)
+                    _send(dst_nid, loc_update_advrt, LOC_UPDATE_NEXT_HEADER, interface=new_locs_joined[0])
+                    # TODO wait for acks
                 # Reset backwards learning
                 global loc_to_interface
                 to_remove=[]
@@ -372,13 +371,13 @@ def startup():
     if "backwards_learning_ttl" in config_section:
         backwards_learning_ttl = config_section["backwards_learning_ttl"]
     else:
-        backwards_learning_ttl = 30
+        backwards_learning_ttl = 300000
     
     global active_uncast_session_ttl
     if "active_uncast_session_ttl" in config_section:
         active_uncast_session_ttl = config_section["active_uncast_session_ttl"]
     else:
-        active_uncast_session_ttl = 30
+        active_uncast_session_ttl = 300000
 
     global log_file
     if "log" in config_section and config_section.getboolean("log"):
@@ -403,7 +402,7 @@ def startup():
 
     if len(loc_cycle) > 1:
         if "move_sleep" in config_section:
-            move_sleep = config_section["move_sleep"]
+            move_sleep = config_section.getint("move_sleep")
         else:
             move_sleep = 10
         MoveThread(loc_cycle, move_sleep).start()
