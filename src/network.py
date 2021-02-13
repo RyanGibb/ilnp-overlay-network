@@ -11,6 +11,7 @@ import link
 import discovery
 import util
 from util import NetworkException
+from collections import defaultdict
 
 VERSION_SHIFT       = 28
 TRAFFIC_CLASS_SHIFT = 20
@@ -133,11 +134,14 @@ def send(nid, data, next_header):
 # Sends messages in send queue
 class SendThread(threading.Thread):
     def run(self):
+        global send_cv
+        send_cv = threading.Condition()
         while True:
             try:
                 _send(*out_queue.popleft())
             except IndexError:
-                # TODO wait here?
+                with send_cv:
+                    send_cv.wait()
                 continue
             except Exception as e:
                 if log_file != None:
@@ -245,11 +249,7 @@ def _receive():
             _send(src_nid, loc_update_ack, LOC_UPDATE_NEXT_HEADER, interface=recieved_interface, loc=new_locs[0])
     else:
         active_nids[src_nid] = time.time()
-        in_queues.setdefault(
-                next_header, collections.deque(maxlen=None)
-        ).append((
-            data, src_nid, dst_nid
-        ))
+        return (next_header, (data, src_nid, dst_nid))
 
 
 # Receive from queue
@@ -261,10 +261,21 @@ def receive(next_header):
 # Recieves messages and adds them to recieve queue
 class ReceiveThread(threading.Thread):
     def run(self):
+        global receive_cv
+        receive_cv = defaultdict(threading.Condition)
         # Queues by next header
         while True:
             try:
-                _receive()
+                returned = _receive()
+                if returned != None:
+                    next_header, received = returned
+                    in_queues.setdefault(
+                        next_header, collections.deque(maxlen=None)
+                    ).append((
+                        received
+                    ))
+                    with receive_cv[next_header]:
+                        receive_cv[next_header].notify()
             except Exception as e:
                 if log_file != None:
                     util.write_log(log_file, "Error recieving: %s" % e)

@@ -40,7 +40,8 @@ class Socket:
                 (str(data[:29]) + '...') if len(data) > 32 else data
             ))
         network.send(remote_nid, message, PROTOCOL_NEXT_HEADER)
-        
+        with network.send_cv:
+            network.send_cv.notify()        
 
     def receive(self):
         try:
@@ -56,8 +57,8 @@ class ReceiveThread(threading.Thread):
                 message, src_nid, dst_nid = network.receive(PROTOCOL_NEXT_HEADER)
             # Input queue empty (or non-existant) for next header PROTOCOL_NEXT_HEADER
             except (IndexError, KeyError):
-                # Allow context switching
-                time.sleep(0)
+                with network.receive_cv[PROTOCOL_NEXT_HEADER]:
+                    network.receive_cv[PROTOCOL_NEXT_HEADER].wait()
                 continue
             except :
                 raise NetworkException("Invalid next header: %d" % PROTOCOL_NEXT_HEADER)
