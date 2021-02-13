@@ -303,15 +303,16 @@ class SolititationThread(threading.Thread):
 
 
 class MoveThread(threading.Thread):
-    def __init__(self, loc_cycle, move_sleep):
+    def __init__(self, loc_cycle, move_time, handover_time):
         threading.Thread.__init__(self)
         self.loc_cycle = loc_cycle
-        self.move_sleep = move_sleep
+        self.move_time = move_time
+        self.handover_time = handover_time
         self.loc_cycle_index = 0
 
     def run(self):
         while True:
-            time.sleep(self.move_sleep)
+            time.sleep(self.move_time)
             try:
                 new_loc_cycle_index = (self.loc_cycle_index + 1) % len(self.loc_cycle)
                 new_locs_joined = self.loc_cycle[new_loc_cycle_index]
@@ -331,7 +332,10 @@ class MoveThread(threading.Thread):
                     # Send locator update advertisement on interface to first new locator
                     # so backwards learning can be done on locator update.
                     _send(dst_nid, loc_update_advrt, LOC_UPDATE_NEXT_HEADER, interface=new_locs_joined[0])
-                    # TODO wait for acks
+                    # TODO wait for ack
+                
+                time.sleep(self.handover_time)
+
                 # Reset backwards learning
                 global loc_to_interface
                 to_remove=[]
@@ -340,10 +344,11 @@ class MoveThread(threading.Thread):
                         to_remove.append(mapped_loc)
                 for mapped_loc in to_remove:
                     del loc_to_interface[mapped_loc]
-
+                # Leave locators
                 for loc in locs_joined:
                     if loc not in new_locs_joined:
                         link.leave(loc)
+                
                 self.loc_cycle_index = new_loc_cycle_index
                 locs_joined = new_locs_joined
             except Exception as e:
@@ -405,11 +410,15 @@ def startup():
     SolititationThread().start()
 
     if len(loc_cycle) > 1:
-        if "move_sleep" in config_section:
-            move_sleep = config_section.getint("move_sleep")
+        if "move_time" in config_section:
+            move_time = config_section.getfloat("move_time")
         else:
-            move_sleep = 10
-        MoveThread(loc_cycle, move_sleep).start()
+            move_time = 20
+        if "handover_time" in config_section:
+            handover_time = config_section.getfloat("handover_time")
+        else:
+            handover_time = 10
+        MoveThread(loc_cycle, move_time, handover_time).start()
 
 
 startup()

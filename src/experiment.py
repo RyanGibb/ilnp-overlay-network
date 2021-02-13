@@ -28,9 +28,15 @@ else:
     REMOTE_PORT = None
 
 if "run_time" in config_section:
-    RUN_TIME = config_section.getint("run_time")
+    RUN_TIME = config_section.getfloat("run_time")
 else:
     RUN_TIME = None
+
+if "wait_time" in config_section:
+    WAIT_TIME = config_section.getfloat("wait_time")
+else:
+    # 100ms
+    WAIT_TIME = 0.1
 
 
 def experiment():
@@ -58,6 +64,9 @@ def experiment():
 
     i = 1
     sequence_number = None
+    # keep track of how many seconds behind we are,
+    # to avoid spiking to catch up after intermitened connectivity
+    slow = 0
     while True:
         try:
             if remote != None:
@@ -76,11 +85,11 @@ def experiment():
                 if start == None:
                     start=time.time()
                 else:
-                    wait_time = 0.1 # 100ms
-                    sleep_time = (i * wait_time) - (time.time() - start)
+                    sleep_time = (i * WAIT_TIME) - (time.time() - start) + slow
                     if sleep_time > 0:
                         time.sleep(sleep_time)
                     else:
+                        slow += -sleep_time
                         print("WARN %f slow" % -sleep_time, file=sys.stderr)
                 total_bytes+=len(data)
         except transport.NetworkException as e:
