@@ -7,13 +7,37 @@ import transport
 import util
 import discovery
 
-HOSTNAME        = util.config["discovery"]["hostname"]
-PORT            = util.config["application"].getint("port")
-REMOTE_HOSTNAME = util.config["application"]["remote_hostname"]
-REMOTE_PORT     = util.config["application"].getint("remote_port")
-RUN_TIME        = util.config["application"].getint("run_time")
+if "application" in util.config:
+    config_section = util.config["application"]
+else:
+    config_section = {}
+
+if "port" in config_section:
+    PORT = config_section.getint("port")
+else:
+    PORT = None
+
+if "remote_hostname" in config_section:
+    REMOTE_HOSTNAME = config_section["remote_hostname"]
+else:
+    REMOTE_HOSTNAME = None
+
+if "remote_port" in config_section:
+    REMOTE_PORT = config_section.getint("remote_port")
+else:
+    REMOTE_PORT = None
+
+if "run_time" in config_section:
+    RUN_TIME = config_section.getint("run_time")
+else:
+    RUN_TIME = None
+
 
 def experiment():
+    # If no local port, return.
+    # Node will still run network code and forward packets
+    if PORT == None:
+        return
     sock = transport.Socket()
     sock.bind(PORT)
     
@@ -22,10 +46,9 @@ def experiment():
     else:
         remote = None
     
-    config_section = util.config["application"]
     print(datetime.now(), " Started")
     for k in config_section:
-        print(datetime.now(), "\t%s = %s" % (k, config_section[k]))
+        print("\t%s = %s" % (k, config_section[k]))
 
     f = open("/dev/urandom", "rb")
     
@@ -86,7 +109,7 @@ def experiment():
         if sequence_number == 0:
             break
 
-        if RUN_TIME != -1 and start != None and now - start > RUN_TIME:
+        if RUN_TIME != None and start != None and now - start > RUN_TIME:
             if remote != None:
                 remote_addr = discovery.getaddrinfo(remote)
                 data=util.int_to_bytes(0, 8)

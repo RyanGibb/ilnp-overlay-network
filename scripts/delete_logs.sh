@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-method=${1:-"eth"} 
+method=${1:-"eth"}
 
 echo "Deleting logs..."
 for host in alice bob; do

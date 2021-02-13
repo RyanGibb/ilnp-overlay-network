@@ -53,6 +53,19 @@ def get_log_file_path(log_type):
     return path
 
 
+def get_log_file(section_name):
+    config_section = config[section_name]
+    if "log" not in config_section or not config_section.getboolean("log"):
+        return None
+    log_filepath = get_log_file_path(section_name)
+    log_file = open(log_filepath, "a")
+    intial_log = "Started"
+    for k in config_section:
+        intial_log+="\n\t%s = %s" % (k, config_section[k])
+    write_log(log_file, intial_log)
+    return log_file
+
+
 def write_log(log_file, message):
     log_file.write("%s %s\n" % (datetime.now(), message))
     log_file.flush()

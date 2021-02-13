@@ -380,14 +380,7 @@ def startup():
         active_uncast_session_ttl = 300000
 
     global log_file
-    if "log" in config_section and config_section.getboolean("log"):
-        log_filepath = util.get_log_file_path("network")
-        log_file = open(log_filepath, "a")
-        util.write_log(log_file, "Started")
-        for k in config_section:
-            util.write_log(log_file, "\t%s = %s" % (k, config_section[k]))
-    else:
-        log_file = None
+    log_file = util.get_log_file("network")
     
     ReceiveThread().start()
     SendThread().start()
