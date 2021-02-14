@@ -6,62 +6,54 @@ from util import NetworkException
 
 DISCOVERY_NEXT_HEADER = 43
 
-# hostnames   -> identifiers
-hst_to_nid = {}
-# identifiers -> locators
-nid_to_locs = {}
+# hostname   -> { (loc, nid, timestamp) }
+host_map = {}
 
-# identifiers -> hostnames
-nid_to_hst = {}
+# (identifier, locator) -> (hostname, timestamp)
+inverse_host_map = {}
 
 
 def getaddrinfo(addr):
     hst, port = addr
-    entry = hst_to_nid.get(hst)
-    if entry != None:
-        nid, timestamp = entry
-        # If mapping expired
-        if time.time() - timestamp > ttl:
-            hst_to_nid[hst] = None
-            entry = None
-    if entry == None:
-        raise NetworkException("No addr mapping for hostname '%s'" % hst)
-    return nid, port
+    entries = host_map.get(hst)
+    if entries != None:
+        valid_entries = []
+        for loc, nid, timestamp in entries:
+            if time.time() - timestamp < ttl:
+                valid_entries.append((loc, nid, timestamp))
+        if len(valid_entries) == 0:
+            host_map[hst] = None
+            valid_entries = None
+        elif len(entries) > len(valid_entries):
+            host_map[hst] = valid_entries
+        entries = valid_entries
+    if entries == None:
+        raise NetworkException("No mapping for hostname '%s'" % hst)
+    # TODO more sophisticated choice
+    entry = entries[0]
+    loc, nid, _ = entry
+    return loc, nid, port
 
 
 def gethostbyaddr(addr):
-    nid, port = addr
-    entry = nid_to_hst.get(nid)
+    loc, nid, port = addr
+    key = (loc, nid)
+    entry = inverse_host_map.get(key)
     if entry != None:
         hst, timestamp = entry
         # If mapping expired
         if time.time() - timestamp > ttl:
-            nid_to_hst[nid] = None
+            inverse_host_map[key] = None
             entry = None
     if entry == None:
-        raise NetworkException("No addr mapping for nid '%s'" % nid)
+        raise NetworkException("No mapping for addr '%s:%s'" % (loc, nid))
     return hst, port
 
 
-def get_locs(nid):
-    locs = nid_to_locs.get(nid)
-    if locs != None:
-        valid_locs = [(loc, timestamp) for loc, timestamp in locs if time.time() - timestamp < ttl]
-        if len(valid_locs) == 0:
-            nid_to_locs[nid] = None
-            valid_locs = None
-        elif len(locs) > len(valid_locs):
-            nid_to_locs[nid] = valid_locs
-        locs = valid_locs
-    if locs == None:
-        raise NetworkException("No locators mapping for nid '%s'" % nid)
-    return [loc for loc, _ in locs]
-
-
-def get_solititation(loc):
+def get_solititation(loc, nid):
     message = struct.pack("!8s8s?",
         # implicit advertisement
-        util.hex_to_bytes(local_nid, 8),
+        util.hex_to_bytes(nid, 8),
         util.hex_to_bytes(loc, 8),
         # solititation
         True,
@@ -71,9 +63,9 @@ def get_solititation(loc):
     return message
 
 
-def get_advertisement(loc):
+def get_advertisement(loc, nid):
     message = struct.pack("!8s8s?",
-        util.hex_to_bytes(local_nid, 8),
+        util.hex_to_bytes(nid, 8),
         util.hex_to_bytes(loc, 8),
         # not solititation
         False,
@@ -96,36 +88,31 @@ def process_message(message, recieved_interface):
     loc = util.bytes_to_hex(loc_bytes)
     hst = message[17:].decode('utf-8')
     
-    hst_to_nid[hst] = nid, timestamp
-    nid_to_hst[nid] = hst, timestamp
-    # Can have multiple locators for one nid
-    locs = nid_to_locs.get(nid)
-    if locs == None:
-        nid_to_locs[nid] = [(loc, timestamp)]
+    inverse_host_map[(loc, nid)] = hst, timestamp
+    
+    entries = host_map.get(hst)
+    if entries == None:
+        host_map[hst] = [(loc, nid, timestamp)]
     else:
-        loc_already_mapped = False
-        for i in range(len(locs)):
-            mapped_loc, _ = locs[i]
-            if mapped_loc == loc:
-                loc_already_mapped = True
+        already_mapped = False
+        for i in range(len(entries)):
+            l, n, _ = entries[i]
+            if l == loc and n == nid:
+                already_mapped = True
                 # update timestamp
-                locs[i] = loc, timestamp
+                entries[i] = loc, nid, timestamp
                 break
-        if not loc_already_mapped:
-            locs.append((loc, timestamp))
-        nid_to_locs[nid] = locs
+        if not already_mapped:
+            entries.append((loc, nid, timestamp))
+        host_map[hst] = entries
 
     if log_file != None:
-        util.write_log(log_file, "\n\t%s\n\t%s\n\t%s" % (
-            "%s => %s" % (hst, hst_to_nid[hst]),
-            "%s => %s" % (nid, nid_to_hst[nid]),
-            "%s => %s" % (nid, nid_to_locs[nid])
+        util.write_log(log_file, "\n\t%s\n\t%s" % (
+            "%s => %s" % (hst, host_map[hst]),
+            "%s:%s => %s" % (loc, nid, inverse_host_map[(loc, nid)])
         ))
 
-    if solititation:
-        return get_advertisement(recieved_interface)
-    else:
-        return None
+    return solititation
 
 
 def locator_update(nid, new_locs):
@@ -137,7 +124,7 @@ def locator_update(nid, new_locs):
         ))
 
 
-def startup(local_nid_param, locs_joined):
+def startup():
     config_section = util.config["discovery"]
 
     global log_file
@@ -155,19 +142,3 @@ def startup(local_nid_param, locs_joined):
         wait_time = 10
     # discovery TTL is 3 times the wait time
     ttl = 3 * wait_time
-    
-    global local_nid
-    local_nid = local_nid_param
-
-    hst_to_nid[local_hst] = local_nid
-    # Can have multiple locators for one nid
-    nid_to_locs[local_nid] = set(locs_joined)
-
-    if log_file != None:
-        util.write_log(log_file, "\n\t%s\n\t%s" % (
-            "%s => %s" % (local_hst, hst_to_nid[local_hst]),
-            "%s => %s" % (local_nid, nid_to_locs[local_nid])
-        ))
-    
-
-    

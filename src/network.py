@@ -68,10 +68,7 @@ def map_locator_to_interface(loc):
 
 
 # Send now, mapping nid to locator, and locator to interface.
-def _send(nid, data, next_header, interface=None, loc=None):
-    if loc == None:
-        # TODO multiple locs
-        loc = discovery.get_locs(nid)[0]
+def _send(loc, nid, data, next_header, interface=None):
     if interface == None:
         interface = map_locator_to_interface(loc)
         if interface == None:
@@ -126,9 +123,9 @@ def _send(nid, data, next_header, interface=None, loc=None):
 
 
 # Add to send queue.
-def send(nid, data, next_header):
+def send(loc, nid, data, next_header):
     # note if maxlen set this will overwrite the oldest value
-    return out_queue.append((nid, data, next_header))
+    return out_queue.append((loc, nid, data, next_header))
 
 
 # Sends messages in send queue
@@ -153,6 +150,8 @@ def _receive():
     message, recieved_interface, from_ip = link.receive()
 
     header = message[:40] # Header is 40 bytes
+    data = message[40:]
+
     (
         masked_bytes,
         payload_length_bytes,
@@ -179,12 +178,14 @@ def _receive():
 
     # Ignore own messages, if they aren't to us
     if from_ip == link.local_addr and dst_nid != local_nid:
+        # Unless they are a discovery message, in which case we will
+        # store the mapping (for local name resoltion) but will not respond
+        # if next_header == discovery.DISCOVERY_NEXT_HEADER:
+        #     discovery.process_message(data, recieved_interface)
         return
     
     # Add mapping from source locator to the interface the packet was recieved on
     loc_to_interface[src_loc] = recieved_interface, time.time()
-
-    data = message[40:]
 
     # If not for us, try to forward
     if dst_nid != local_nid and dst_loc != ALL_NODES_LOC:
@@ -216,17 +217,22 @@ def _receive():
         ))
 
     if next_header == discovery.DISCOVERY_NEXT_HEADER:
-        response = discovery.process_message(data, recieved_interface)
-        if response != None:
-            # if response != None, then message was a solititation, so save timetamp
-            global solititation_timestamp # timestamp of last recieved solititation
+        solititation = discovery.process_message(data, recieved_interface)
+        # If discovery message was a solititation
+        if solititation:
+            # timestamp of last recieved solititation
+            global solititation_timestamp
             solititation_timestamp = time.time()
+
+            # Respond to solititation
+            advertisement = discovery.get_advertisement(recieved_interface, local_nid)
             # send advertisement to all interfaces
             for loc in locs_joined:
                 _send(
-                    "0:0:0:0", response, discovery.DISCOVERY_NEXT_HEADER,
-                    map_locator_to_interface(loc), ALL_NODES_LOC
+                    ALL_NODES_LOC, "0:0:0:0", advertisement,
+                    discovery.DISCOVERY_NEXT_HEADER, map_locator_to_interface(loc)
                 )
+
         # Forward discovery message to other interfaces
         for loc in locs_joined:
             if loc == recieved_interface:
@@ -236,6 +242,7 @@ def _receive():
                 # Decrement hop limit
                 mutable_message[7] -= 1
                 link.send(map_locator_to_interface(loc), bytes(mutable_message))
+        
     elif next_header == LOC_UPDATE_NEXT_HEADER:
         advertisement = struct.unpack("!?", data[0:1])[0]
         # If a locator upate advertisement (as oppsed to an acknowledgement)
@@ -246,10 +253,11 @@ def _receive():
             discovery.locator_update(src_nid, new_locs)
             # Send locator update acknowledgement (only used for backwards learning)
             loc_update_ack = struct.pack("!?", False)
-            _send(src_nid, loc_update_ack, LOC_UPDATE_NEXT_HEADER, interface=recieved_interface, loc=new_locs[0])
+            _send(new_locs[0], src_nid, loc_update_ack, LOC_UPDATE_NEXT_HEADER, interface=recieved_interface)
+        
     else:
         active_nids[src_nid] = time.time()
-        return (next_header, (data, src_nid, dst_nid))
+        return (next_header, (data, src_loc, src_nid, dst_loc, dst_nid))
 
 
 # Receive from queue
@@ -268,11 +276,11 @@ class ReceiveThread(threading.Thread):
             try:
                 returned = _receive()
                 if returned != None:
-                    next_header, received = returned
+                    next_header, returned_tuple = returned
                     in_queues.setdefault(
                         next_header, collections.deque(maxlen=None)
                     ).append((
-                        received
+                        returned_tuple
                     ))
                     with receive_cv[next_header]:
                         receive_cv[next_header].notify()
@@ -291,8 +299,8 @@ class SolititationThread(threading.Thread):
                     for loc in locs_joined:
                         # nid doesn't matter for ALL_NODES_LOC
                         _send(
-                            "0:0:0:0", discovery.get_solititation(loc), discovery.DISCOVERY_NEXT_HEADER,
-                            loc, ALL_NODES_LOC
+                            ALL_NODES_LOC, "0:0:0:0", discovery.get_solititation(loc, local_nid),
+                            discovery.DISCOVERY_NEXT_HEADER, loc
                         )
                     solititation_timestamp = time.time()
                 # sleep a random time from (discovery.wait_time / 2) to discovery.wait_time
@@ -331,7 +339,7 @@ class MoveThread(threading.Thread):
                         continue
                     # Send locator update advertisement on interface to first new locator
                     # so backwards learning can be done on locator update.
-                    _send(dst_nid, loc_update_advrt, LOC_UPDATE_NEXT_HEADER, interface=new_locs_joined[0])
+                    _send(new_locs_joined[0], dst_nid, loc_update_advrt, LOC_UPDATE_NEXT_HEADER)
                     # TODO wait for ack
                 
                 time.sleep(self.handover_time)
@@ -402,7 +410,7 @@ def startup():
     SendThread().start()
 
     # Discovery startup should run after link startup
-    discovery.startup(local_nid, locs_joined)
+    discovery.startup()
 
     global solititation_timestamp
     solititation_timestamp = 0

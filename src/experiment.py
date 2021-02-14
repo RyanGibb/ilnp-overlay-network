@@ -70,17 +70,18 @@ def experiment():
     while True:
         try:
             if remote != None:
-                remote_addr = discovery.getaddrinfo(remote)
+                remote_addrinfo = discovery.getaddrinfo(remote)
                 # MTU - header size = 1440 - 44 = 1396
                 # 1396 - 8 = 1388
                 data=util.int_to_bytes(i, 8) + f.read(1388)
-                print("%s %-30s <- %d %d" % (
+                print("%s %-20s/%-30s <- %d %d" % (
                     datetime.now(),
                     "%s:%d" % remote,
+                    "[ %s : %s ]:%d" % remote_addrinfo,
                     len(data),
                     i
                 ))
-                sock.send(remote_addr, data)
+                sock.send(remote_addrinfo, data)
                 i+=1
                 if start == None:
                     start=time.time()
@@ -97,13 +98,14 @@ def experiment():
         
         while True:
             try:
-                data, src_addr = sock.receive()
+                data, src_addrinfo = sock.receive()
                 sequence_number=util.bytes_to_int(data[:8])
                 if start == None:
                     start=time.time()
-                print("%s %-30s -> %d %d" % (
+                print("%s %-20s/%-30s -> %d %d" % (
                         datetime.now(),
-                        "%s:%d" % discovery.gethostbyaddr(src_addr),
+                        "%s:%d" % discovery.gethostbyaddr(src_addrinfo),
+                        "[ %s : %s ]:%d" % src_addrinfo,
                         len(data),
                         sequence_number
                 ))

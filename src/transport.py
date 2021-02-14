@@ -26,7 +26,7 @@ class Socket:
         self.in_queue = in_queue
     
     def send(self, remote, data):
-        remote_nid, remote_port = remote
+        remote_loc, remote_nid, remote_port = remote
         # Transport header is just 16 bit source and destination ports
         header = struct.pack("!2s2s",
             util.int_to_bytes(self.port, 2),
@@ -35,11 +35,11 @@ class Socket:
         message = header + data
         if log_file != None:
             util.write_log(log_file, "%-30s <- %-30s %s" % (
-                "[%s]:%d" % remote,
-                "[%s]:%d" % (network.local_nid, self.port),
+                "[%s:%s]:%d" % remote,
+                "[localhost]:%d" % self.port,
                 (str(data[:29]) + '...') if len(data) > 32 else data
             ))
-        network.send(remote_nid, message, PROTOCOL_NEXT_HEADER)
+        network.send(remote_loc, remote_nid, message, PROTOCOL_NEXT_HEADER)
         with network.send_cv:
             network.send_cv.notify()        
 
@@ -54,7 +54,7 @@ class ReceiveThread(threading.Thread):
     def run(self):
         while True:
             try:
-                message, src_nid, dst_nid = network.receive(PROTOCOL_NEXT_HEADER)
+                message, src_loc, src_nid, dst_loc, dst_nid = network.receive(PROTOCOL_NEXT_HEADER)
             # Input queue empty (or non-existant) for next header PROTOCOL_NEXT_HEADER
             except (IndexError, KeyError):
                 with network.receive_cv[PROTOCOL_NEXT_HEADER]:
@@ -72,12 +72,12 @@ class ReceiveThread(threading.Thread):
                 continue
             in_queues.setdefault(
                 dst_port, collections.deque(maxlen=None)
-            ).append((data, (src_nid, src_port)))
+            ).append((data, (src_loc, src_nid, src_port)))
 
             if log_file != None:
                 util.write_log(log_file, "%-30s -> %-30s %s" % (
-                    "[%s]:%d" % (src_nid, src_port),
-                    "[%s]:%d" % (dst_nid, dst_port),
+                    "[%s:%s]:%d" % (src_loc, src_nid, src_port),
+                    "[%s:%s]:%d" % (dst_loc, dst_nid, dst_port),
                     (str(data[:29]) + '...') if len(data) > 32 else data
                 ))
 
