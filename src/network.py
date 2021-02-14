@@ -46,10 +46,11 @@ in_queues = {}
 # Populated by backwards learning.
 loc_to_interface = {}
 
-# Map of identifiers to timestamps. Keeps track of active unicast ILNP sessions
+# Map of Identifier-Locator Vectors to timestamps.
+# Keeps track of active unicast ILNP sessions
 # for determining where to send locator updates.
 # Active here means sent in the past active_uncast_session_ttl seconds.
-active_nids =   {}
+active_ilvs =   {}
 
 
 def map_locator_to_interface(loc):
@@ -119,7 +120,7 @@ def _send(loc, nid, data, next_header, interface=None):
     link.send(interface, message)
     # Don't count discovery and locator update messages as active
     if loc != ALL_NODES_LOC:
-        active_nids[nid] = time.time()
+        active_ilvs[(loc, nid)] = time.time()
 
 
 # Add to send queue.
@@ -245,18 +246,24 @@ def _receive():
         
     elif next_header == LOC_UPDATE_NEXT_HEADER:
         advertisement = struct.unpack("!?", data[0:1])[0]
-        # If a locator upate advertisement (as oppsed to an acknowledgement)
+        # If a locator upate advertisement
         if advertisement:
             # Process locator updates
             # Start at 1 (after type field)
             new_locs = [util.bytes_to_hex(struct.unpack("!8s", data[i:i+8])[0]) for i in range(1, len(data), 8)]
-            discovery.locator_update(src_nid, new_locs)
-            # Send locator update acknowledgement (only used for backwards learning)
+            discovery.locator_update(src_loc, src_nid, new_locs)
+            # Send locator update acknowledgement
             loc_update_ack = struct.pack("!?", False)
             _send(new_locs[0], src_nid, loc_update_ack, LOC_UPDATE_NEXT_HEADER, interface=recieved_interface)
-        
+        # If a locator upate acknowledgement
+        else:
+            to_ack_loc_update.remove((src_loc, src_nid))
+            if len(to_ack_loc_update) == 0:
+                with loc_update_ack_cv:
+                    loc_update_ack_cv.notify()
+    
     else:
-        active_nids[src_nid] = time.time()
+        active_ilvs[(src_loc, src_nid)] = time.time()
         return (next_header, (data, src_loc, src_nid, dst_loc, dst_nid))
 
 
@@ -311,14 +318,18 @@ class SolititationThread(threading.Thread):
 
 
 class MoveThread(threading.Thread):
-    def __init__(self, loc_cycle, move_time, handover_time):
+    def __init__(self, loc_cycle, move_time, handover_time, loc_update_retries, loc_update_retry_wait_time):
         threading.Thread.__init__(self)
         self.loc_cycle = loc_cycle
         self.move_time = move_time
         self.handover_time = handover_time
         self.loc_cycle_index = 0
+        self.loc_update_retries = loc_update_retries
+        self.loc_update_retry_wait_time = loc_update_retry_wait_time
 
     def run(self):
+        global loc_update_ack_cv
+        loc_update_ack_cv = threading.Condition()
         while True:
             time.sleep(self.move_time)
             try:
@@ -331,18 +342,31 @@ class MoveThread(threading.Thread):
                     if loc not in self.loc_cycle[self.loc_cycle_index]:
                         link.join(loc)
                 new_locs_joined_bytes = [util.hex_to_bytes(joined_loc, 8) for joined_loc in new_locs_joined]
-                # True for locator update advertisement
+                # Locator update advertisement
                 loc_update_advrt = struct.pack("!?" + "8s" * len(new_locs_joined), True, *new_locs_joined_bytes)
-                for dst_nid, timestamp in active_nids.items():
+                global to_ack_loc_update
+                to_ack_loc_update = set()
+                for ilv, timestamp in active_ilvs.items():
+                    dst_loc, dst_nid = ilv
                     if time.time() - timestamp > active_uncast_session_ttl:
-                        del active_nids[dst_nid]
+                        del active_ilvs[ilv]
                         continue
                     # Send locator update advertisement on interface to first new locator
                     # so backwards learning can be done on locator update.
-                    _send(new_locs_joined[0], dst_nid, loc_update_advrt, LOC_UPDATE_NEXT_HEADER)
-                    # TODO wait for ack
+                    _send(dst_loc, dst_nid, loc_update_advrt, LOC_UPDATE_NEXT_HEADER, interface=new_locs_joined[0])
+                    to_ack_loc_update.add(ilv)
                 
-                time.sleep(self.handover_time)
+                intial_handover_time = time.time()
+                for i in range(self.loc_update_retries):
+                    with loc_update_ack_cv:
+                        loc_update_ack_cv.wait(self.loc_update_retry_wait_time)
+                    # Retry locator update advertisement
+                    for ilv in to_ack_loc_update:
+                        dst_loc, dst_nid = ilv
+                        _send(dst_loc, dst_nid, loc_update_advrt, LOC_UPDATE_NEXT_HEADER, interface=new_locs_joined[0])
+                remaining_handover_time = self.handover_time + intial_handover_time - time.time()
+                if remaining_handover_time > 0:
+                    time.sleep(remaining_handover_time)
 
                 # Reset backwards learning
                 global loc_to_interface
@@ -418,15 +442,28 @@ def startup():
     SolititationThread().start()
 
     if len(loc_cycle) > 1:
+
         if "move_time" in config_section:
             move_time = config_section.getfloat("move_time")
         else:
             move_time = 20
+
         if "handover_time" in config_section:
             handover_time = config_section.getfloat("handover_time")
         else:
             handover_time = 10
-        MoveThread(loc_cycle, move_time, handover_time).start()
+
+        if "loc_update_retries" in config_section:
+            loc_update_retries = config_section["loc_update_retries"]
+        else:
+            loc_update_retries = 3
+        
+        if "loc_update_retry_wait_time" in config_section:
+            loc_update_retry_wait_time = config_section["loc_update_retry_wait_time"]
+        else:
+            loc_update_retry_wait_time = 1
+            
+        MoveThread(loc_cycle, move_time, handover_time, loc_update_retries, loc_update_retry_wait_time).start()
 
 
 startup()

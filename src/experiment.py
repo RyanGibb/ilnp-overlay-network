@@ -125,9 +125,10 @@ def experiment():
                 remote_addr = discovery.getaddrinfo(remote)
                 data=util.int_to_bytes(0, 8)
                 sock.send(remote_addr, data)
-                print("%s %-30s <- %d %d" % (
+                print("%s %-20s/%-30s <- %d %d" % (
                     datetime.now(),
                     "%s:%d" % remote,
+                    "[ %s : %s ]:%d" % remote_addrinfo,
                     len(data),
                     0
                 ))

@@ -6,7 +6,7 @@ from util import NetworkException
 
 DISCOVERY_NEXT_HEADER = 43
 
-# hostname   -> { (loc, nid, timestamp) }
+# hostname   -> [ (loc, nid, timestamp) ]
 host_map = {}
 
 # (identifier, locator) -> (hostname, timestamp)
@@ -115,13 +115,17 @@ def process_message(message, recieved_interface):
     return solititation
 
 
-def locator_update(nid, new_locs):
+# Update host coresponding to (loc, nid) if it exists
+def locator_update(loc, nid, new_locs):
     timestamp = time.time()
-    nid_to_locs[nid] = [(loc, timestamp) for loc in new_locs]
-    if log_file != None:
-        util.write_log(log_file, "\n\t%s" % (
-            "%s => %s" % (nid, nid_to_locs[nid])
-        ))
+    entry = inverse_host_map.get((loc, nid))
+    if entry != None:
+        hst, _
+        host_map[hst] = [(loc, nid, timestamp) for loc in new_locs]
+        if log_file != None:
+            util.write_log(log_file, "\n\t%s" % (
+                "%s => %s" % (nid, nid_to_locs[nid])
+            ))
 
 
 def startup():
