@@ -120,11 +120,14 @@ def locator_update(loc, nid, new_locs):
     timestamp = time.time()
     entry = inverse_host_map.get((loc, nid))
     if entry != None:
-        hst, _
+        hst, _ = entry
         host_map[hst] = [(loc, nid, timestamp) for loc in new_locs]
+        inverse_host_map[(loc, nid)] = None
+        for loc in new_locs:
+            inverse_host_map[(loc, nid)] = hst, timestamp
         if log_file != None:
             util.write_log(log_file, "\n\t%s" % (
-                "%s => %s" % (nid, nid_to_locs[nid])
+                "%s => %s" % (nid, host_map[hst])
             ))
 
 
@@ -141,8 +144,8 @@ def startup():
     # Time between sending solititations in seconds
     global wait_time, ttl
     if "wait_time" in config_section:
-        wait_time = config_section["wait_time"]
+        wait_time = config_section.getfloat("wait_time")
     else:
-        wait_time = 10
+        wait_time = 100000000
     # discovery TTL is 3 times the wait time
     ttl = 3 * wait_time

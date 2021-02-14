@@ -185,8 +185,9 @@ def _receive():
         #     discovery.process_message(data, recieved_interface)
         return
     
-    # Add mapping from source locator to the interface the packet was recieved on
-    loc_to_interface[src_loc] = recieved_interface, time.time()
+    if src_loc not in locs_joined:
+        # Add mapping from source locator to the interface the packet was recieved on
+        loc_to_interface[src_loc] = recieved_interface, time.time()
 
     # If not for us, try to forward
     if dst_nid != local_nid and dst_loc != ALL_NODES_LOC:
@@ -203,7 +204,7 @@ def _receive():
                     link.send(interface, bytes(mutable_message))
                     util.write_log(log_file, "%-45s <- %-30s %s %s" % (
                         ":".join([dst_loc, dst_nid]) + "%" + interface,
-                        "*" + ":".join([src_loc, src_nid]),
+                        "*" + ":".join([src_loc, src_nid]) + "%" + recieved_interface,
                         "(%5d, %2d, %2d)" % (payload_length, next_header, hop_limit),
                         (str(data[:29]) + '...') if len(data) > 32 else data
                     ))
@@ -218,6 +219,10 @@ def _receive():
         ))
 
     if next_header == discovery.DISCOVERY_NEXT_HEADER:
+        # Ignore discovery messages during the handover process
+        #  on interfaces we are leaving
+        if recieved_interface not in locs_joined:
+            return
         solititation = discovery.process_message(data, recieved_interface)
         # If discovery message was a solititation
         if solititation:
@@ -255,12 +260,16 @@ def _receive():
             # Send locator update acknowledgement
             loc_update_ack = struct.pack("!?", False)
             _send(new_locs[0], src_nid, loc_update_ack, LOC_UPDATE_NEXT_HEADER, interface=recieved_interface)
+            active_ilvs[(new_locs[0], src_nid)] = time.time()
         # If a locator upate acknowledgement
         else:
-            to_ack_loc_update.remove((src_loc, src_nid))
-            if len(to_ack_loc_update) == 0:
+            ilv = (src_loc, src_nid)
+            if ilv in ilvs_to_update:
+                del ilvs_to_update[ilv]
+            if len(ilvs_to_update) == 0:
                 with loc_update_ack_cv:
                     loc_update_ack_cv.notify()
+            active_ilvs[(src_loc, src_nid)] = time.time()
     
     else:
         active_ilvs[(src_loc, src_nid)] = time.time()
@@ -331,58 +340,83 @@ class MoveThread(threading.Thread):
         global loc_update_ack_cv
         loc_update_ack_cv = threading.Condition()
         while True:
-            time.sleep(self.move_time)
+            time.sleep(self.move_time - self.handover_time)
             try:
-                new_loc_cycle_index = (self.loc_cycle_index + 1) % len(self.loc_cycle)
-                new_locs_joined = self.loc_cycle[new_loc_cycle_index]
                 global locs_joined
+                global loc_to_interface
+                old_locs_joined = locs_joined
+                self.loc_cycle_index = (self.loc_cycle_index + 1) % len(self.loc_cycle)
+                new_locs_joined = self.loc_cycle[self.loc_cycle_index]
+
                 if log_file != None:
-                    util.write_log(log_file, "Moving from %s to %s" % (locs_joined, new_locs_joined))
-                for loc in new_locs_joined:
-                    if loc not in self.loc_cycle[self.loc_cycle_index]:
-                        link.join(loc)
-                new_locs_joined_bytes = [util.hex_to_bytes(joined_loc, 8) for joined_loc in new_locs_joined]
-                # Locator update advertisement
-                loc_update_advrt = struct.pack("!?" + "8s" * len(new_locs_joined), True, *new_locs_joined_bytes)
-                global to_ack_loc_update
-                to_ack_loc_update = set()
+                    util.write_log(log_file, "Moving from %s to %s" % (old_locs_joined, new_locs_joined))
+
+                # Update locs_joined for discovery protocol forwarding
+                locs_joined = new_locs_joined
+
+                # Store interface mappings of active_ilvs to avoid
+                # sending locator updates on new locators (or else the remote node can't identify us).
+                global ilvs_to_update
+                ilvs_to_update = {}
+                old_active_ilvs = []
                 for ilv, timestamp in active_ilvs.items():
-                    dst_loc, dst_nid = ilv
                     if time.time() - timestamp > active_uncast_session_ttl:
-                        del active_ilvs[ilv]
+                        old_active_ilvs.add(ilv)
                         continue
-                    # Send locator update advertisement on interface to first new locator
-                    # so backwards learning can be done on locator update.
-                    _send(dst_loc, dst_nid, loc_update_advrt, LOC_UPDATE_NEXT_HEADER, interface=new_locs_joined[0])
-                    to_ack_loc_update.add(ilv)
+                    dst_loc, dst_nid = ilv
+                    ilvs_to_update[ilv] = map_locator_to_interface(dst_loc)
+                for ilv in old_active_ilvs:
+                    del active_ilvs[ilv]
+
+                # Join multicast groups corresponding to new locators,
+                # add new locators to fowarding table,
+                # and send a discovey protocol advertisment on new locators for path discovery through backwards learning
+                for loc in new_locs_joined:
+                    if loc not in old_locs_joined:
+                        link.join(loc)
+                        loc_to_interface[loc] = loc, None
+                        advertisement = discovery.get_advertisement(loc, local_nid)
+                        _send(
+                            ALL_NODES_LOC, "0:0:0:0", advertisement,
+                            discovery.DISCOVERY_NEXT_HEADER, loc
+                        )
                 
+                # Send locator update advertisement to active ilvs
+                new_locs_joined_bytes = [util.hex_to_bytes(joined_loc, 8) for joined_loc in new_locs_joined]
+                loc_update_advrt = struct.pack("!?" + "8s" * len(new_locs_joined), True, *new_locs_joined_bytes)
+                
+                for ilv, interface in ilvs_to_update.items():
+                    dst_loc, dst_nid = ilv
+                    _send(dst_loc, dst_nid, loc_update_advrt, LOC_UPDATE_NEXT_HEADER, interface=interface)
+                
+                # Wait for locator update advertisements, retrying advertisement if required,
                 intial_handover_time = time.time()
                 for i in range(self.loc_update_retries):
                     with loc_update_ack_cv:
                         loc_update_ack_cv.wait(self.loc_update_retry_wait_time)
                     # Retry locator update advertisement
-                    for ilv in to_ack_loc_update:
+                    for ilv, interface in ilvs_to_update.items():
                         dst_loc, dst_nid = ilv
-                        _send(dst_loc, dst_nid, loc_update_advrt, LOC_UPDATE_NEXT_HEADER, interface=new_locs_joined[0])
+                        _send(dst_loc, dst_nid, loc_update_advrt, LOC_UPDATE_NEXT_HEADER, interface=interface)
+
+                # Wait for soft handover
                 remaining_handover_time = self.handover_time + intial_handover_time - time.time()
                 if remaining_handover_time > 0:
                     time.sleep(remaining_handover_time)
 
-                # Reset backwards learning
-                global loc_to_interface
+                # Reset forwarding table
                 to_remove=[]
                 for mapped_loc, (interface, timestamp) in loc_to_interface.items():
                     if interface not in new_locs_joined:
                         to_remove.append(mapped_loc)
                 for mapped_loc in to_remove:
                     del loc_to_interface[mapped_loc]
-                # Leave locators
-                for loc in locs_joined:
+                
+                # Finally, leave old locators
+                for loc in old_locs_joined:
                     if loc not in new_locs_joined:
                         link.leave(loc)
                 
-                self.loc_cycle_index = new_loc_cycle_index
-                locs_joined = new_locs_joined
             except Exception as e:
                 if log_file != None:
                     util.write_log(log_file, "Error moving: %s" % e)
