@@ -48,6 +48,8 @@ class Socket:
             return self.in_queue.popleft()
         except IndexError:
             raise NetworkException("No packets for port %d" % self.port)
+        except AttributeError:
+            raise NetworkException("Socket is not bound to a port.")
 
 
 class ReceiveThread(threading.Thread):
