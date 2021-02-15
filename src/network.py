@@ -181,8 +181,8 @@ def _receive():
     if from_ip == link.local_addr and dst_nid != local_nid:
         # Unless they are a discovery message, in which case we will
         # store the mapping (for local name resoltion) but will not respond
-        # if next_header == discovery.DISCOVERY_NEXT_HEADER:
-        #     discovery.process_message(data, recieved_interface)
+        if next_header == discovery.DISCOVERY_NEXT_HEADER:
+            discovery.process_message(data, recieved_interface)
         return
     
     if src_loc not in locs_joined:
