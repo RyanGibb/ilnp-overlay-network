@@ -339,6 +339,7 @@ class MoveThread(threading.Thread):
     def run(self):
         global loc_update_ack_cv
         loc_update_ack_cv = threading.Condition()
+        time.sleep(self.handover_time)
         while True:
             time.sleep(self.move_time - self.handover_time)
             try:
