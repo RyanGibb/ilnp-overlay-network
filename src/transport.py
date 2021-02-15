@@ -74,7 +74,11 @@ class ReceiveThread(threading.Thread):
                 continue
             in_queues.setdefault(
                 dst_port, collections.deque(maxlen=None)
-            ).append((data, (src_loc, src_nid, src_port)))
+            ).append((
+                data,
+                (src_loc, src_nid, src_port),
+                (dst_loc, dst_nid, dst_port)
+            ))
 
             if log_file != None:
                 util.write_log(log_file, "%-30s -> %-30s %s" % (
