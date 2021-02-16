@@ -21,6 +21,5 @@ done
 touch "$(dirname $0)"/../logs/experiment_desktop.log
 python3 "$(dirname $0)"/../src/"$application".py "$(dirname $0)"/../config/"$config"/config_router.ini >> "$(dirname $0)"/../logs/experiment_desktop.log
 echo "Exited desktop"
-read
 
 clean_up
