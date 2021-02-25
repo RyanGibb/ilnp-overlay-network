@@ -185,6 +185,11 @@ def _receive():
             discovery.process_message(data, recieved_interface)
         return
     
+    # If for us, but recieved on a locator that we're not currently joined to, ignore.
+    # This is required for not receiving duplicate messages during the soft handoff.
+    if recieved_interface not in locs_joined and dst_loc != recieved_interface:
+        return
+    
     if src_loc not in locs_joined:
         # Add mapping from source locator to the interface the packet was recieved on
         loc_to_interface[src_loc] = recieved_interface, time.time()
@@ -209,7 +214,7 @@ def _receive():
                         (str(data[:29]) + '...') if len(data) > 32 else data
                     ))
         return
-
+    
     if log_file != None:
         util.write_log(log_file, "%-45s -> %-30s %s %s" % (
             ":".join([src_loc, src_nid]) + "%" + recieved_interface,

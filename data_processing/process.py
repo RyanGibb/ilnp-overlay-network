@@ -63,7 +63,7 @@ def get_moves(start, network_log):
 
 
 
-def get_locator_packets(experiment_log, start):
+def get_locator_packets(experiment_log, start, received_locs=True, sent_locs=True, remote=True):
     locator_packets = defaultdict(list)
     for line in experiment_log[1:-3]:
         if line[0] == '\t':
@@ -72,12 +72,15 @@ def get_locator_packets(experiment_log, start):
         time = datetime.strptime(time_string, "%H:%M:%S.%f")
         elapsed = (time - start).total_seconds()
         size=int(size)
-        
-        if direction == "->":
-            locator = ":".join(remote_addrinfo[1:].split("/")[1].split(":")[:4])
+
+        if remote:
+            addrinfo = remote_addrinfo
         else:
-            locator = ":".join(local_addrinfo[1:].split("/")[1].split(":")[:4])
-        locator_packets[locator].append((elapsed, size))
+            addrinfo = local_addrinfo
+        
+        if (direction == "->" and received_locs) or (direction == "<-" and sent_locs):
+            locator = ":".join(addrinfo[1:].split("/")[1].split(":")[:4])
+            locator_packets[locator].append((elapsed, size))
     return locator_packets
 
 
@@ -85,17 +88,17 @@ def get_locator_throughuts(locator_packets, end):
     locator_throughputs = {}
     for locator, packets in locator_packets.items():
         throughputs = []
-        for i in range(0, end, throughput_window_tick):
+        for i in range(0, end, throughput_bucket_size):
             window = 0
             for elapsed, size in packets:
-                if (elapsed > i - throughput_window_size / 2 and
-                    elapsed < i + throughput_window_size / 2):
+                if (elapsed > i - throughput_bucket_size / 2 and
+                    elapsed < i + throughput_bucket_size / 2):
                     window += size
-            throughputs.append(window / throughput_window_tick)
+            throughputs.append(window)
         locator_throughputs[locator] = throughputs
     throughputs = locator_throughputs.values()
     aggregate_throughput = []
-    for i in range(0, int(end / throughput_window_tick)):
+    for i in range(0, int(end / throughput_bucket_size)):
         aggregate_tick=sum(throughput[i] for throughput in throughputs)
         aggregate_throughput.append(aggregate_tick)
     locator_throughputs["aggregate"] = aggregate_throughput
@@ -131,20 +134,23 @@ def plot_seq_nos(node, seq_nos, moves, duration):
             break
         ax.axvline(x=elapsed, color='gray', linestyle='--')
         pos=elapsed-(elapsed-prev)/2
-        ax.text(pos,seq_no_values[-1]/2,from_loc,color='gray',rotation=0,ha="center")
+        rot=0
+        if elapsed-prev < 15:
+            rot=90
+        ax.text(pos,seq_no_values[-1]/2,from_loc,color='gray',rotation=rot,ha="center")
         prev=elapsed
     fig.savefig(os.path.join(out_dir, '%s.png' % title))
 
 
 def plot_throughputs(locator_throughputs, duration, node):
-    seconds_range = [i for i in range(0, duration, throughput_window_tick)]
+    seconds_range = [i for i in range(0, duration, throughput_bucket_size)]
     # max_throughout = max([max(throughput) for throughput in locator_throughputs.values()])
     for locator, throughputs in locator_throughputs.items():
         fig = plt.figure()
         ax = fig.add_subplot(111)
         ax.grid(color='lightgray', linestyle='-', linewidth=1)
         ax.set_axisbelow(True)
-        title="%ds Moving average throughput vs Time on %s %s" % (throughput_window_size, node, locator)
+        title="Throughput in %ds buckets vs Time on %s locator %s" % (throughput_bucket_size, node, locator)
         ax.set_title(title)
         ax.set_xlabel("Time (s)")
         ax.set_ylabel("Throughput (B/s)")
@@ -162,15 +168,50 @@ def plot_throughputs(locator_throughputs, duration, node):
         fig.savefig(os.path.join(out_dir, '%s.png' % title))
 
 
+
+
+
+
+def get_seq_nos_to_locs(experiment_log, mobile=True):
+    seq_nos_to_locs = {}
+    for line in experiment_log[1:-3]:
+        if line[0] == '\t':
+            continue
+        _, time_string, remote_addrinfo, direction, local_addrinfo, size, seq_num = line.split()
+        if direction == "->":
+            if mobile:
+                addrinfo = remote_addrinfo
+            else:
+                addrinfo = local_addrinfo
+            locator = ":".join(addrinfo[1:].split("/")[1].split(":")[:4])
+            seq_nos_to_locs[seq_num] = locator
+    return seq_nos_to_locs
+
+
+def get_sent_locator_packets(experiment_log, seq_nos_to_locs, start):
+    locator_packets = defaultdict(list)
+    for line in experiment_log[1:-3]:
+        if line[0] == '\t':
+            continue
+        _, time_string, remote_addrinfo, direction, local_addrinfo, size, seq_num = line.split()
+        time = datetime.strptime(time_string, "%H:%M:%S.%f")
+        elapsed = (time - start).total_seconds()
+        size=int(size)
+        locator = seq_nos_to_locs.get(seq_num)
+        if locator != None:
+            locator_packets[locator].append((elapsed, size))
+    return locator_packets
+
+
+
+
 if __name__ == "__main__":
     log_dir = sys.argv[1]
     global out_dir
     out_dir = log_dir
 
-    global throughput_window_size
-    global throughput_window_tick
-    throughput_window_size = 1
-    throughput_window_tick = 1
+    global throughput_bucket_size
+    throughput_bucket_size = 1
 
     alice_experiment_log = open(os.path.join(log_dir, "experiment_alice.log"), "r").readlines()
     alice_network_log    = open(os.path.join(log_dir, "network_alice.log"   ), "r").readlines()
@@ -182,16 +223,18 @@ if __name__ == "__main__":
     alice_moves = get_moves(alice_start, alice_network_log)
     if alice_seq_nos != ([], []):
         plot_seq_nos("MN", alice_seq_nos, alice_moves, alice_duration)
-
-    alice_locator_packets = get_locator_packets(alice_experiment_log, alice_start)
-    alice_locator_throughputs = get_locator_throughuts(alice_locator_packets, alice_duration)
-    plot_throughputs(alice_locator_throughputs, alice_duration, "MN")
-
-
+    
     bob_start, bob_duration, bob_seq_nos = get_seq_nos(bob_experiment_log)
     if bob_seq_nos != ([], []):
         plot_seq_nos("CN", bob_seq_nos, alice_moves, bob_duration)
 
-    # bob_locator_packets = get_locator_packets(bob_experiment_log, bob_start)
-    # bob_locator_throughputs = get_locator_throughuts(bob_locator_packets, bob_duration)
-    # plot_throughputs(bob_locator_throughputs, bob_duration, "CN")
+    alice_recieved_locator_packets = get_locator_packets(alice_experiment_log, alice_start, sent_locs=False, remote=False)
+    alice_sent_seq_nos_to_locs = get_seq_nos_to_locs(bob_experiment_log)
+    alice_sent_locator_packets = get_sent_locator_packets(alice_experiment_log, alice_sent_seq_nos_to_locs, alice_start)
+    alice_locator_packets = alice_recieved_locator_packets | alice_sent_locator_packets
+    alice_locator_throughputs = get_locator_throughuts(alice_locator_packets, alice_duration)
+    plot_throughputs(alice_locator_throughputs, alice_duration, "MN")
+
+    bob_locator_packets = get_locator_packets(bob_experiment_log, bob_start)
+    bob_locator_throughputs = get_locator_throughuts(bob_locator_packets, bob_duration)
+    plot_throughputs(bob_locator_throughputs, bob_duration, "CN")
