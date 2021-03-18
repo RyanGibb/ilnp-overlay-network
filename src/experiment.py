@@ -36,7 +36,7 @@ def experiment(port, remote, run_time, wait_time):
                 # MTU - header size = 1440 - 44 = 1396
                 # 1396 - 8 = 1388
                 data=util.int_to_bytes(i, 8) + f.read(1388)
-                print("%s %-40s <- %-40s  %d %d" % (
+                print("%s %-40s <- %-40s %d %d" % (
                     datetime.now(),
                     "[%s/%s:%s]:%d" % (remote[0], *remote_addrinfo),
                     "[%s]:%d" % (hostname, port),
