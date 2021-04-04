@@ -7,7 +7,6 @@ import os
 import network
 import util
 from util import NetworkException
-import discovery
 
 PROTOCOL_NEXT_HEADER = 42
 

@@ -146,6 +146,6 @@ def startup():
     if "wait_time" in config_section:
         wait_time = config_section.getfloat("wait_time")
     else:
-        wait_time = 100000000
+        wait_time = 30
     # discovery TTL is 3 times the wait time
     ttl = 3 * wait_time

@@ -459,13 +459,13 @@ def startup():
     if "backwards_learning_ttl" in config_section:
         backwards_learning_ttl = config_section["backwards_learning_ttl"]
     else:
-        backwards_learning_ttl = 300000
+        backwards_learning_ttl = 30
     
     global active_uncast_session_ttl
     if "active_uncast_session_ttl" in config_section:
         active_uncast_session_ttl = config_section["active_uncast_session_ttl"]
     else:
-        active_uncast_session_ttl = 300000
+        active_uncast_session_ttl = 30
 
     global log_file
     log_file = util.get_log_file("network")
