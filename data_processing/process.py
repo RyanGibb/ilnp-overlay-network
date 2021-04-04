@@ -94,6 +94,8 @@ def get_locator_throughuts(locator_packets, end):
                 if (elapsed > i - throughput_bucket_size / 2 and
                     elapsed < i + throughput_bucket_size / 2):
                     window += size
+            # make kB
+            window /= 1000
             throughputs.append(window)
         locator_throughputs[locator] = throughputs
     throughputs = locator_throughputs.values()
@@ -126,8 +128,16 @@ def plot_seq_nos(node, seq_nos, moves, duration):
     # ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%0.1f'))
     # ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%0.1f'))
     ax.plot(np.array(seq_no_times), np.array(seq_no_values))
+    
     ax.set_xlim(left=0, right=duration)
     ax.set_ylim(bottom=0)
+
+    ax.set_xticks(np.arange(0, duration + 1, step=50))
+    # ax.set_yticks(np.arange(0, len(seq_nos) + 1, step=5000))
+
+    # ax.yaxis.set_minor_locator(plticker.MultipleLocator(200))
+    # ax.grid(True, which='minor')
+
     prev=0
     for from_loc, elapsed in moves:
         if elapsed > seq_no_times[-1]:
@@ -135,37 +145,68 @@ def plot_seq_nos(node, seq_nos, moves, duration):
         ax.axvline(x=elapsed, color='gray', linestyle='--')
         pos=elapsed-(elapsed-prev)/2
         rot=0
-        if elapsed-prev < 15:
+        if elapsed-prev < 30:
             rot=90
         ax.text(pos,seq_no_values[-1]/2,from_loc,color='gray',rotation=rot,ha="center")
         prev=elapsed
-    fig.savefig(os.path.join(out_dir, '%s.png' % title))
+
+    fig.savefig(os.path.join(out_dir, '%s.pdf' % title))
 
 
 def plot_throughputs(locator_throughputs, duration, node):
     seconds_range = [i for i in range(0, duration, throughput_bucket_size)]
     # max_throughout = max([max(throughput) for throughput in locator_throughputs.values()])
-    for locator, throughputs in locator_throughputs.items():
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.grid(color='lightgray', linestyle='-', linewidth=1)
-        ax.set_axisbelow(True)
-        title="Throughput in %ds buckets vs Time on %s locator %s" % (throughput_bucket_size, node, locator)
-        ax.set_title(title)
-        ax.set_xlabel("Time (s)")
-        ax.set_ylabel("Throughput (B/s)")
-        
-        # ax.set_xticks(np.arange(0, duration, step=60)) 
-        # # ax.set_yticks(np.arange(0, max_throughout, step=1000))
-
-        ax.plot(np.array(seconds_range), np.array(throughputs), label=locator)
-        ax.set_xlim(left=0, right=duration)
-        # ax.set_ylim(bottom=0, top=max_throughout)
-        ax.set_ylim(bottom=0)
+    max_throughout = 60
+    fig, axs = plt.subplots(len(locator_throughputs), sharex=True, sharey=True)
     
-        ax.legend()
+    # https://stackoverflow.com/questions/6963035/pyplot-axes-labels-for-subplots
+    # add a big axes, hide frame
+    # fig.add_subplot(111, frameon=False)
+    # # hide tick and tick label of the big axes
+    # plt.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+    # plt.grid(False)
 
-        fig.savefig(os.path.join(out_dir, '%s.png' % title))
+    i = 0
+    for locator, throughputs in locator_throughputs.items():
+        axs[i].grid(color='lightgray', linestyle='-', linewidth=1)
+        axs[i].set_axisbelow(True)
+        # title="Throughput in %ds buckets vs Time on %s locator %s" % (throughput_bucket_size, node, locator)
+        title="MN locator %s" % locator
+        axs[i].set_title(title)
+        # axs[i].set_xlabel("Time (s)")
+        # axs[i].set_ylabel("Throughput (B/s)")
+        
+        axs[i].set_xticks(np.arange(0, duration + 1, step=50))
+        axs[i].set_yticks(np.arange(0, max_throughout + 1, step=10))
+
+        axs[i].xaxis.set_minor_locator(plticker.MultipleLocator(10))
+        axs[i].yaxis.set_minor_locator(plticker.MultipleLocator(5000))
+
+        axs[i].plot(np.array(seconds_range), np.array(throughputs), label=locator)
+        axs[i].set_xlim(left=0, right=duration)
+        axs[i].set_ylim(bottom=0, top=max_throughout)
+        # axs[i].set_ylim(bottom=0)
+
+        axs[i].grid(True, which='minor')
+    
+        axs[i].legend()
+
+        i += 1
+    
+    # Set common labels
+    # fig.text(0.5, 0.01, 'Time (s)', ha='center', va='center')
+    # fig.text(0.01, 0.5, 'Throughput (B/s)', ha='center', va='center', rotation='vertical')
+
+
+    # plt.setp(axs[:], xlabel='Time (s)')
+    # plt.setp(axs[:], ylabel='Throughput (B/s)')
+    # plt.xlabel("Time (s)")
+    # plt.ylabel("Throughput (B/s)", y)
+    fig.supxlabel('Time (s)')
+    fig.supylabel('Throughput (kB/s)')
+
+    title="Throughput in %ds buckets vs Time on %s" % (throughput_bucket_size, node)
+    fig.savefig(os.path.join(out_dir, '%s.pdf' % title))
 
 
 
@@ -194,12 +235,13 @@ def get_sent_locator_packets(experiment_log, seq_nos_to_locs, start):
         if line[0] == '\t':
             continue
         _, time_string, remote_addrinfo, direction, local_addrinfo, size, seq_num = line.split()
-        time = datetime.strptime(time_string, "%H:%M:%S.%f")
-        elapsed = (time - start).total_seconds()
-        size=int(size)
-        locator = seq_nos_to_locs.get(seq_num)
-        if locator != None:
-            locator_packets[locator].append((elapsed, size))
+        if direction == "<-":
+            time = datetime.strptime(time_string, "%H:%M:%S.%f")
+            elapsed = (time - start).total_seconds()
+            size=int(size)
+            locator = seq_nos_to_locs.get(seq_num)
+            if locator != None:
+                locator_packets[locator].append((elapsed, size))
     return locator_packets
 
 
@@ -231,9 +273,23 @@ if __name__ == "__main__":
     alice_recieved_locator_packets = get_locator_packets(alice_experiment_log, alice_start, sent_locs=False, remote=False)
     alice_sent_seq_nos_to_locs = get_seq_nos_to_locs(bob_experiment_log)
     alice_sent_locator_packets = get_sent_locator_packets(alice_experiment_log, alice_sent_seq_nos_to_locs, alice_start)
-    alice_locator_packets = alice_recieved_locator_packets | alice_sent_locator_packets
-    alice_locator_throughputs = get_locator_throughuts(alice_locator_packets, alice_duration)
+    alice_locator_packets = defaultdict(list)
+
+    for locator, loctor_packets in alice_recieved_locator_packets.items():
+        alice_locator_packets[locator] += loctor_packets
+    for locator, loctor_packets in alice_sent_locator_packets.items():
+        alice_locator_packets[locator] += loctor_packets
+    # alice_locator_packets = alice_sent_locator_packets
+    sorted_alice_locator_packets = {}
+    for locator, loctor_packets in alice_locator_packets.items():
+        # locator_packets = [(elapsed, size)]
+        loctor_packets = sorted(loctor_packets, key=lambda x: x[0])
+        sorted_alice_locator_packets[locator] = loctor_packets
+
+    alice_locator_throughputs = get_locator_throughuts(sorted_alice_locator_packets, alice_duration)
     plot_throughputs(alice_locator_throughputs, alice_duration, "MN")
+
+
 
     bob_locator_packets = get_locator_packets(bob_experiment_log, bob_start)
     bob_locator_throughputs = get_locator_throughuts(bob_locator_packets, bob_duration)
