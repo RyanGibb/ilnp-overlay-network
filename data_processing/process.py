@@ -151,12 +151,12 @@ def plot_seq_nos(node, seq_nos, moves, duration):
         prev=elapsed
 
     fig.savefig(os.path.join(out_dir, '%s.pdf' % title))
-
+    fig.savefig(os.path.join(out_dir, '%s.png' % title))
 
 def plot_throughputs(locator_throughputs, duration, node):
     seconds_range = [i for i in range(0, duration, throughput_bucket_size)]
     # max_throughout = max([max(throughput) for throughput in locator_throughputs.values()])
-    max_throughout = 60
+    max_throughout = 20
     fig, axs = plt.subplots(len(locator_throughputs), sharex=True, sharey=True)
     
     # https://stackoverflow.com/questions/6963035/pyplot-axes-labels-for-subplots
@@ -207,6 +207,7 @@ def plot_throughputs(locator_throughputs, duration, node):
 
     title="Throughput in %ds buckets vs Time on %s" % (throughput_bucket_size, node)
     fig.savefig(os.path.join(out_dir, '%s.pdf' % title))
+    fig.savefig(os.path.join(out_dir, '%s.png' % title))
 
 
 
