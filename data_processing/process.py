@@ -127,7 +127,7 @@ def plot_seq_nos(node, seq_nos, moves, duration):
     # ax.set_yticks(np.arange(0, seq_nums[-1], step=seq_nums[-1]/10))
     # ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%0.1f'))
     # ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%0.1f'))
-    ax.plot(np.array(seq_no_times), np.array(seq_no_values))
+    ax.scatter(np.array(seq_no_times), np.array(seq_no_values), s=0.1)
     
     ax.set_xlim(left=0, right=duration)
     ax.set_ylim(bottom=0)
@@ -177,10 +177,10 @@ def plot_throughputs(locator_throughputs, duration, node):
         # axs[i].set_ylabel("Throughput (B/s)")
         
         axs[i].set_xticks(np.arange(0, duration + 1, step=50))
-        axs[i].set_yticks(np.arange(0, max_throughout + 1, step=10))
+        axs[i].set_yticks(np.arange(0, max_throughout + 1, step=5))
 
         axs[i].xaxis.set_minor_locator(plticker.MultipleLocator(10))
-        axs[i].yaxis.set_minor_locator(plticker.MultipleLocator(5000))
+        axs[i].yaxis.set_minor_locator(plticker.MultipleLocator(5))
 
         axs[i].plot(np.array(seconds_range), np.array(throughputs), label=locator)
         axs[i].set_xlim(left=0, right=duration)
