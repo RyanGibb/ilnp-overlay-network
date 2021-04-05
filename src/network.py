@@ -146,9 +146,9 @@ class SendThread(threading.Thread):
                     util.write_log(log_file, "Error sending: %s" % e)
 
 
-# Recieve now
+# receive now
 def _receive():
-    message, recieved_interface, from_ip = link.receive()
+    message, received_interface, from_ip = link.receive()
 
     header = message[:40] # Header is 40 bytes
     data = message[40:]
@@ -182,23 +182,23 @@ def _receive():
         # Unless they are a discovery message, in which case we will
         # store the mapping (for local name resoltion) but will not respond
         if next_header == discovery.DISCOVERY_NEXT_HEADER:
-            discovery.process_message(data, recieved_interface)
+            discovery.process_message(data, received_interface)
         return
     
-    # If for us, but recieved on a locator that we're not currently joined to, ignore.
+    # If for us, but received on a locator that we're not currently joined to, ignore.
     # This is required for not receiving duplicate messages during the soft handoff.
-    if recieved_interface not in locs_joined and dst_loc != recieved_interface:
+    if received_interface not in locs_joined and dst_loc != received_interface:
         return
     
     if src_loc not in locs_joined:
-        # Add mapping from source locator to the interface the packet was recieved on
-        loc_to_interface[src_loc] = recieved_interface, time.time()
+        # Add mapping from source locator to the interface the packet was received on
+        loc_to_interface[src_loc] = received_interface, time.time()
 
     # If not for us, try to forward
     if dst_nid != local_nid and dst_loc != ALL_NODES_LOC:
         # Only forward if the destination locator of the packet is different from
         # the interface it was received on.
-        if recieved_interface != dst_loc:
+        if received_interface != dst_loc:
             interface = map_locator_to_interface(dst_loc)
             if interface != None:
                 mutable_message = bytearray(message)
@@ -209,7 +209,7 @@ def _receive():
                     link.send(interface, bytes(mutable_message))
                     util.write_log(log_file, "%-45s <- %-30s %s %s" % (
                         ":".join([dst_loc, dst_nid]) + "%" + interface,
-                        "*" + ":".join([src_loc, src_nid]) + "%" + recieved_interface,
+                        "*" + ":".join([src_loc, src_nid]) + "%" + received_interface,
                         "(%5d, %2d, %2d)" % (payload_length, next_header, hop_limit),
                         (str(data[:29]) + '...') if len(data) > 32 else data
                     ))
@@ -217,7 +217,7 @@ def _receive():
     
     if log_file != None:
         util.write_log(log_file, "%-45s -> %-30s %s %s" % (
-            ":".join([src_loc, src_nid]) + "%" + recieved_interface,
+            ":".join([src_loc, src_nid]) + "%" + received_interface,
             ":".join([dst_loc, dst_nid]),
             "(%5d,%3d,%3d)" % (payload_length, next_header, hop_limit),
             (str(data[:29]) + '...') if len(data) > 32 else data
@@ -226,17 +226,17 @@ def _receive():
     if next_header == discovery.DISCOVERY_NEXT_HEADER:
         # Ignore discovery messages during the handover process
         #  on interfaces we are leaving
-        if recieved_interface not in locs_joined:
+        if received_interface not in locs_joined:
             return
-        solititation = discovery.process_message(data, recieved_interface)
+        solititation = discovery.process_message(data, received_interface)
         # If discovery message was a solititation
         if solititation:
-            # timestamp of last recieved solititation
+            # timestamp of last received solititation
             global solititation_timestamp
             solititation_timestamp = time.time()
 
             # Respond to solititation
-            advertisement = discovery.get_advertisement(recieved_interface, local_nid)
+            advertisement = discovery.get_advertisement(received_interface, local_nid)
             # send advertisement to all interfaces
             for loc in locs_joined:
                 _send(
@@ -246,7 +246,7 @@ def _receive():
 
         # Forward discovery message to other interfaces
         for loc in locs_joined:
-            if loc == recieved_interface:
+            if loc == received_interface:
                 continue
             mutable_message = bytearray(message)
             if mutable_message[7] > 0:
@@ -264,7 +264,7 @@ def _receive():
             discovery.locator_update(src_loc, src_nid, new_locs)
             # Send locator update acknowledgement
             loc_update_ack = struct.pack("!?", False)
-            _send(new_locs[0], src_nid, loc_update_ack, LOC_UPDATE_NEXT_HEADER, interface=recieved_interface)
+            _send(new_locs[0], src_nid, loc_update_ack, LOC_UPDATE_NEXT_HEADER, interface=received_interface)
             active_ilvs[(new_locs[0], src_nid)] = time.time()
         # If a locator update acknowledgement
         else:
@@ -287,7 +287,7 @@ def receive(next_header):
     return in_queues[next_header].popleft()
 
 
-# Recieves messages and adds them to recieve queue
+# receives messages and adds them to receive queue
 class ReceiveThread(threading.Thread):
     def run(self):
         global receive_cv
@@ -307,7 +307,7 @@ class ReceiveThread(threading.Thread):
                         receive_cv[next_header].notify()
             except Exception as e:
                 if log_file != None:
-                    util.write_log(log_file, "Error recieving: %s" % e)
+                    util.write_log(log_file, "Error receiving: %s" % e)
 
 
 class SolititationThread(threading.Thread):

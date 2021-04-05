@@ -74,7 +74,7 @@ def get_advertisement(loc, nid):
     return message
 
 
-def process_message(message, recieved_interface):
+def process_message(message, received_interface):
     timestamp = time.time()
 
     # 17 bytes of struct
