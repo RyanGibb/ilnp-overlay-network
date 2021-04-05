@@ -256,7 +256,7 @@ def _receive():
         
     elif next_header == LOC_UPDATE_NEXT_HEADER:
         advertisement = struct.unpack("!?", data[0:1])[0]
-        # If a locator upate advertisement
+        # If a locator update advertisement
         if advertisement:
             # Process locator updates
             # Start at 1 (after type field)
@@ -266,7 +266,7 @@ def _receive():
             loc_update_ack = struct.pack("!?", False)
             _send(new_locs[0], src_nid, loc_update_ack, LOC_UPDATE_NEXT_HEADER, interface=recieved_interface)
             active_ilvs[(new_locs[0], src_nid)] = time.time()
-        # If a locator upate acknowledgement
+        # If a locator update acknowledgement
         else:
             ilv = (src_loc, src_nid)
             if ilv in ilvs_to_update:
