@@ -224,7 +224,7 @@ def _receive():
         ))
 
     if next_header == discovery.DISCOVERY_NEXT_HEADER:
-        # Ignore discovery messages during the handover process
+        # Ignore discovery messages during the handoff process
         #  on interfaces we are leaving
         if received_interface not in locs_joined:
             return
@@ -332,11 +332,11 @@ class SolititationThread(threading.Thread):
 
 
 class MoveThread(threading.Thread):
-    def __init__(self, loc_cycle, move_time, handover_time, loc_update_retries, loc_update_retry_wait_time):
+    def __init__(self, loc_cycle, move_time, handoff_time, loc_update_retries, loc_update_retry_wait_time):
         threading.Thread.__init__(self)
         self.loc_cycle = loc_cycle
         self.move_time = move_time
-        self.handover_time = handover_time
+        self.handoff_time = handoff_time
         self.loc_cycle_index = 0
         self.loc_update_retries = loc_update_retries
         self.loc_update_retry_wait_time = loc_update_retry_wait_time
@@ -344,9 +344,9 @@ class MoveThread(threading.Thread):
     def run(self):
         global loc_update_ack_cv
         loc_update_ack_cv = threading.Condition()
-        time.sleep(self.handover_time)
+        time.sleep(self.handoff_time)
         while True:
-            time.sleep(self.move_time - self.handover_time)
+            time.sleep(self.move_time - self.handoff_time)
             try:
                 global locs_joined
                 global loc_to_interface
@@ -396,7 +396,7 @@ class MoveThread(threading.Thread):
                     _send(dst_loc, dst_nid, loc_update_advrt, LOC_UPDATE_NEXT_HEADER, interface=interface)
                 
                 # Wait for locator update advertisements, retrying advertisement if required,
-                intial_handover_time = time.time()
+                intial_handoff_time = time.time()
                 for i in range(self.loc_update_retries):
                     with loc_update_ack_cv:
                         loc_update_ack_cv.wait(self.loc_update_retry_wait_time)
@@ -405,10 +405,10 @@ class MoveThread(threading.Thread):
                         dst_loc, dst_nid = ilv
                         _send(dst_loc, dst_nid, loc_update_advrt, LOC_UPDATE_NEXT_HEADER, interface=interface)
 
-                # Wait for soft handover
-                remaining_handover_time = self.handover_time + intial_handover_time - time.time()
-                if remaining_handover_time > 0:
-                    time.sleep(remaining_handover_time)
+                # Wait for soft handoff
+                remaining_handoff_time = self.handoff_time + intial_handoff_time - time.time()
+                if remaining_handoff_time > 0:
+                    time.sleep(remaining_handoff_time)
 
                 # Reset forwarding table
                 to_remove=[]
@@ -488,10 +488,10 @@ def startup():
         else:
             move_time = 20
 
-        if "handover_time" in config_section:
-            handover_time = config_section.getfloat("handover_time")
+        if "handoff_time" in config_section:
+            handoff_time = config_section.getfloat("handoff_time")
         else:
-            handover_time = 10
+            handoff_time = 10
 
         if "loc_update_retries" in config_section:
             loc_update_retries = config_section["loc_update_retries"]
@@ -503,7 +503,7 @@ def startup():
         else:
             loc_update_retry_wait_time = 1
             
-        MoveThread(loc_cycle, move_time, handover_time, loc_update_retries, loc_update_retry_wait_time).start()
+        MoveThread(loc_cycle, move_time, handoff_time, loc_update_retries, loc_update_retry_wait_time).start()
 
 
 startup()
