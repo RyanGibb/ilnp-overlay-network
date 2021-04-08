@@ -118,7 +118,7 @@ def plot_seq_nos(node, seq_nos, moves, duration):
     # ax.set_xlim(left=0)
     # ax.set_ylim(bottom=0)
     title="Received sequence numbers vs Time on %s" % node
-    ax.set_title(title)
+    # ax.set_title(title)
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Sequence Number")
     # loc = plticker.MultipleLocator()
@@ -177,19 +177,19 @@ def plot_throughputs(locator_throughputs, duration, node):
         # axs[i].set_ylabel("Throughput (B/s)")
         
         axs[i].set_xticks(np.arange(0, duration + 1, step=50))
-        axs[i].set_yticks(np.arange(0, max_throughout + 1, step=5))
+        axs[i].set_yticks(np.arange(0, max_throughout + 1, step=max_throughout/4))
 
         axs[i].xaxis.set_minor_locator(plticker.MultipleLocator(10))
-        axs[i].yaxis.set_minor_locator(plticker.MultipleLocator(5))
+        axs[i].yaxis.set_minor_locator(plticker.MultipleLocator(max_throughout/8))
 
-        axs[i].plot(np.array(seconds_range), np.array(throughputs), label=locator)
+        axs[i].plot(np.array(seconds_range), np.array(throughputs),  label=locator)
         axs[i].set_xlim(left=0, right=duration)
         axs[i].set_ylim(bottom=0, top=max_throughout)
         # axs[i].set_ylim(bottom=0)
 
         axs[i].grid(True, which='minor')
     
-        axs[i].legend()
+        # axs[i].legend()
 
         i += 1
     
