@@ -53,8 +53,9 @@ def get_seq_nos(experiment_log):
             moves.append((prev_interface, elapsed))
             prev_interface = interface
             prev_interface_elapsed = elapsed
-    # record last interface
-    moves.append((interface, None))
+    if elapsed - prev_interface_elapsed > 10:
+        # record last interface
+        moves.append((interface, None))
     seconds = ceil((end - start).total_seconds())
     duration = ceil((end - start).total_seconds())
     return start, duration, (seq_no_times, seq_no_values), moves
