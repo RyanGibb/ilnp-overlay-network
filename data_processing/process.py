@@ -113,21 +113,9 @@ def plot_seq_nos(node, seq_nos, moves, duration):
     ax = fig.add_subplot(111)
     ax.grid(color='lightgray', linestyle='-', linewidth=1)
     ax.set_axisbelow(True)
-    # ax.set_xlim(0, seq_no_times[-1])
-    # ax.set_ylim(0, seq_no_values[-1])
-    # ax.set_xlim(left=0)
-    # ax.set_ylim(bottom=0)
     title="Received sequence numbers vs Time on %s" % node
-    # ax.set_title(title)
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Sequence Number")
-    # loc = plticker.MultipleLocator()
-    # ax.xaxis.set_major_locator(loc)
-    # ax.set_xticks(np.arange(0, seconds, step=seconds/10)) 
-    # ax.set_yticks(np.arange(0, seq_no_values[-1], step=int(seq_no_values[-1])/10))
-    # ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%0.1f'))
-    # ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%0.1f'))
-    # ax.scatter(np.array(seq_no_times), np.array(seq_no_values), s=0.001)
     ax.plot(np.array(seq_no_times), np.array(seq_no_values))
     
     ax.set_xlim(left=0, right=duration)
@@ -135,10 +123,6 @@ def plot_seq_nos(node, seq_nos, moves, duration):
 
     ax.set_xticks(np.arange(0, duration + 1, step=50))
     ax.grid(False, which="major", axis="x")
-    # ax.set_yticks(np.arange(0, len(seq_nos) + 1, step=5000))
-
-    # ax.yaxis.set_minor_locator(plticker.MultipleLocator(200))
-    # ax.grid(True, which='minor')
 
     prev=0
     for from_loc, elapsed in moves:
@@ -153,66 +137,41 @@ def plot_seq_nos(node, seq_nos, moves, duration):
         ax.text(pos,seq_no_values[-1]/2,from_loc,color='gray',rotation=rot,ha="center")
         prev=elapsed
 
-    # ax.set_xticks([move[1] for move in moves[:-1]], minor=True)
-    # ax.grid(True, which="minor", axis="x")
-
     fig.savefig(os.path.join(out_dir, '%s.pdf' % title))
     fig.savefig(os.path.join(out_dir, '%s.png' % title))
 
 def plot_throughputs(locator_throughputs, duration, node):
     seconds_range = [i for i in range(0, duration, throughput_bucket_size)]
     
-    max_throughout = max([max(throughput) for throughput in locator_throughputs.values()])
+    max_throughput = max([max(throughput) for throughput in locator_throughputs.values()])
     
-    # round max_throughout *up* to *even* 1 significant figure
-    l = ceil(log10(max_throughout + 1)) # length, in base 10 digits
-    max_throughout = ceil(max_throughout / 2 / 10 ** (l - 1)) * 10 ** (l - 1) * 2
+    # round max_throughput *up* to *even* 1 significant figure
+    l = ceil(log10(max_throughput + 1)) # length, in base 10 digits
+    max_throughput = ceil(max_throughput / 2 / 10 ** (l - 1)) * 10 ** (l - 1) * 2
 
     fig, axs = plt.subplots(len(locator_throughputs), sharex=True, sharey=True)
-    
-    # https://stackoverflow.com/questions/6963035/pyplot-axes-labels-for-subplots
-    # add a big axes, hide frame
-    # fig.add_subplot(111, frameon=False)
-    # # hide tick and tick label of the big axes
-    # plt.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
-    # plt.grid(False)
 
     i = 0
     for locator, throughputs in locator_throughputs.items():
         axs[i].grid(color='lightgray', linestyle='-', linewidth=1)
         axs[i].set_axisbelow(True)
-        # title="Throughput in %ds buckets vs Time on %s locator %s" % (throughput_bucket_size, node, locator)
         title="MN locator %s" % locator
         axs[i].set_title(title)
-        # axs[i].set_xlabel("Time (s)")
-        # axs[i].set_ylabel("Throughput (B/s)")
         
         axs[i].set_xticks(np.arange(0, duration + 1, step=50))
-        axs[i].set_yticks(np.arange(0, max_throughout + 1, step=max_throughout/4))
+        axs[i].set_yticks(np.arange(0, max_throughput + 1, step=max_throughput/4))
 
         axs[i].xaxis.set_minor_locator(plticker.MultipleLocator(10))
-        axs[i].yaxis.set_minor_locator(plticker.MultipleLocator(max_throughout/8))
+        axs[i].yaxis.set_minor_locator(plticker.MultipleLocator(max_throughput/8))
 
         axs[i].plot(np.array(seconds_range), np.array(throughputs),  label=locator)
         axs[i].set_xlim(left=0, right=duration)
-        axs[i].set_ylim(bottom=0, top=max_throughout)
-        # axs[i].set_ylim(bottom=0)
+        axs[i].set_ylim(bottom=0, top=max_throughput)
 
         axs[i].grid(True, which='minor')
-    
-        # axs[i].legend()
 
         i += 1
     
-    # Set common labels
-    # fig.text(0.5, 0.01, 'Time (s)', ha='center', va='center')
-    # fig.text(0.01, 0.5, 'Throughput (B/s)', ha='center', va='center', rotation='vertical')
-
-
-    # plt.setp(axs[:], xlabel='Time (s)')
-    # plt.setp(axs[:], ylabel='Throughput (B/s)')
-    # plt.xlabel("Time (s)")
-    # plt.ylabel("Throughput (B/s)", y)
     fig.supxlabel('Time (s)')
     fig.supylabel('Throughput (kB/s)')
 
@@ -222,6 +181,9 @@ def plot_throughputs(locator_throughputs, duration, node):
 
 
 if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: $ python3 process.py <experiment log directory>")
+        exit(0)
     log_dir = sys.argv[1]
     global out_dir
     out_dir = log_dir
