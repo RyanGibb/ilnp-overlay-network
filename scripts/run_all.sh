@@ -14,14 +14,14 @@ trap clean_up SIGHUP SIGINT SIGTERM
 echo "Running..."
 for host in alice bob; do
 	command="$(tail -1 $(dirname $0)/run.sh | sed -e "s/\"\$application\"/$application/g" | sed -e "s/\"\$host\"/$host/g" | sed -e "s/\"\$config\"/$config/g")"
-	ssh "$host"-"$method" "$command >> "~/ilnp-overlay-network/logs/$application"_"$host".log" &\
+	ssh "$host"-"$method" "$command | cat > "~/ilnp-overlay-network/logs/$application"_"$host".log" &\
 	echo $host
 done
 
 host=clare
 command="$(tail -1 $(dirname $0)/run.sh | sed -e "s/\"\$application\"/$application/g" | sed -e "s/\"\$host\"/$host/g" | sed -e "s/\"\$config\"/$config/g")"
-ssh "$host"-"$method" "$command >> "~/ilnp-overlay-network/logs/$application"_"$host".log" &
-
+ssh "$host"-"$method" "$command > "~/ilnp-overlay-network/logs/$application"_"$host".log" &
+#| cat 
 wait
 
 clean_up

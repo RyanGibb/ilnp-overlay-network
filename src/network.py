@@ -3,7 +3,6 @@ import os
 import secrets
 import collections
 import threading
-import os
 import time
 import random
 
@@ -36,8 +35,6 @@ ALL_NODES_LOC = 'ff02:0:0:1'
 
 LOC_UPDATE_NEXT_HEADER = 44
 
-# Output circular queues
-out_queue = collections.deque(maxlen=None)
 # Map of input circular queues indexed by next header
 in_queues = {}
 
@@ -68,8 +65,8 @@ def map_locator_to_interface(loc):
         return interface
 
 
-# Send now, mapping nid to locator, and locator to interface.
-def _send(loc, nid, data, next_header, interface=None):
+# Send packet, mapping nid to locator, and locator to interface.
+def send(loc, nid, data, next_header, interface=None):
     if interface == None:
         interface = map_locator_to_interface(loc)
         if interface == None:
@@ -121,29 +118,8 @@ def _send(loc, nid, data, next_header, interface=None):
     # Don't count discovery and locator update messages as active
     if loc != ALL_NODES_LOC:
         active_ilvs[(loc, nid)] = time.time()
-
-
-# Add to send queue.
-def send(loc, nid, data, next_header):
-    # note if maxlen set this will overwrite the oldest value
-    return out_queue.append((loc, nid, data, next_header))
-
-
-# Sends messages in send queue
-class SendThread(threading.Thread):
-    def run(self):
-        global send_cv
-        send_cv = threading.Condition()
-        while True:
-            try:
-                _send(*out_queue.popleft())
-            except IndexError:
-                with send_cv:
-                    send_cv.wait()
-                continue
-            except Exception as e:
-                if log_file != None:
-                    util.write_log(log_file, "Error sending: %s" % e)
+    # Return interface packet sent on
+    return interface
 
 
 # receive now
@@ -239,7 +215,7 @@ def _receive():
             advertisement = discovery.get_advertisement(received_interface, local_nid)
             # send advertisement to all interfaces
             for loc in locs_joined:
-                _send(
+                send(
                     ALL_NODES_LOC, "0:0:0:0", advertisement,
                     discovery.DISCOVERY_NEXT_HEADER, map_locator_to_interface(loc)
                 )
@@ -264,7 +240,7 @@ def _receive():
             discovery.locator_update(src_loc, src_nid, new_locs)
             # Send locator update acknowledgement
             loc_update_ack = struct.pack("!?", False)
-            _send(new_locs[0], src_nid, loc_update_ack, LOC_UPDATE_NEXT_HEADER, interface=received_interface)
+            send(new_locs[0], src_nid, loc_update_ack, LOC_UPDATE_NEXT_HEADER, interface=received_interface)
             active_ilvs[(new_locs[0], src_nid)] = time.time()
         # If a locator update acknowledgement
         else:
@@ -278,7 +254,7 @@ def _receive():
     
     else:
         active_ilvs[(src_loc, src_nid)] = time.time()
-        return (next_header, (data, src_loc, src_nid, dst_loc, dst_nid))
+        return (next_header, (data, src_loc, src_nid, dst_loc, dst_nid, received_interface))
 
 
 # Receive from queue
@@ -290,8 +266,9 @@ def receive(next_header):
 # receives messages and adds them to receive queue
 class ReceiveThread(threading.Thread):
     def run(self):
-        global receive_cv
-        receive_cv = defaultdict(threading.Condition)
+        # cv = conditional value
+        global receive_cvs
+        receive_cvs = defaultdict(threading.Condition)
         # Queues by next header
         while True:
             try:
@@ -303,8 +280,8 @@ class ReceiveThread(threading.Thread):
                     ).append((
                         returned_tuple
                     ))
-                    with receive_cv[next_header]:
-                        receive_cv[next_header].notify()
+                    with receive_cvs[next_header]:
+                        receive_cvs[next_header].notify()
             except Exception as e:
                 if log_file != None:
                     util.write_log(log_file, "Error receiving: %s" % e)
@@ -319,7 +296,7 @@ class SolititationThread(threading.Thread):
                 if solititation_timestamp == 0 or time.time() - solititation_timestamp > discovery.wait_time:
                     for loc in locs_joined:
                         # nid doesn't matter for ALL_NODES_LOC
-                        _send(
+                        send(
                             ALL_NODES_LOC, "0:0:0:0", discovery.get_solititation(loc, local_nid),
                             discovery.DISCOVERY_NEXT_HEADER, loc
                         )
@@ -382,7 +359,7 @@ class MoveThread(threading.Thread):
                         link.join(loc)
                         loc_to_interface[loc] = loc, None
                         advertisement = discovery.get_advertisement(loc, local_nid)
-                        _send(
+                        send(
                             ALL_NODES_LOC, "0:0:0:0", advertisement,
                             discovery.DISCOVERY_NEXT_HEADER, loc
                         )
@@ -393,7 +370,7 @@ class MoveThread(threading.Thread):
                 
                 for ilv, interface in ilvs_to_update.items():
                     dst_loc, dst_nid = ilv
-                    _send(dst_loc, dst_nid, loc_update_advrt, LOC_UPDATE_NEXT_HEADER, interface=interface)
+                    send(dst_loc, dst_nid, loc_update_advrt, LOC_UPDATE_NEXT_HEADER, interface=interface)
                 
                 # Wait for locator update advertisements, retrying advertisement if required,
                 intial_handoff_time = time.time()
@@ -403,7 +380,7 @@ class MoveThread(threading.Thread):
                     # Retry locator update advertisement
                     for ilv, interface in ilvs_to_update.items():
                         dst_loc, dst_nid = ilv
-                        _send(dst_loc, dst_nid, loc_update_advrt, LOC_UPDATE_NEXT_HEADER, interface=interface)
+                        send(dst_loc, dst_nid, loc_update_advrt, LOC_UPDATE_NEXT_HEADER, interface=interface)
 
                 # Wait for soft handoff
                 remaining_handoff_time = self.handoff_time + intial_handoff_time - time.time()
@@ -471,7 +448,6 @@ def startup():
     log_file = util.get_log_file("network")
     
     ReceiveThread().start()
-    SendThread().start()
 
     # Discovery startup should run after link startup
     discovery.startup()

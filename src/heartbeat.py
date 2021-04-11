@@ -14,6 +14,8 @@ def heartbeat():
     sock = transport.Socket()
     sock.bind(PORT)
     
+    local = (HOSTNAME, PORT)
+
     if REMOTE_HOSTNAME != None and REMOTE_HOSTNAME != "":
         remote = (REMOTE_HOSTNAME, REMOTE_PORT)
     else:
@@ -24,25 +26,36 @@ def heartbeat():
             if remote != None:
                 message = "%s | %s" % (str(datetime.now()), HOSTNAME)
                 remote_addrinfo = discovery.getaddrinfo(remote)
+                local_addrinfo = discovery.getaddrinfo(local)
+                interface = sock.send(remote_addrinfo, message.encode('utf-8'))
                 print("%s %-40s <- %-40s %s" % (
                     datetime.now(),
-                    "[%s/%s:%s]:%d" % (remote[0], *remote_addrinfo),
-                    "[%s]:%d" % (HOSTNAME, PORT),
+                    "[%s/%s%%%s]:%d" % (
+                        remote[0],
+                        remote_addrinfo[0], # ilv
+                        interface,
+                        remote_addrinfo[1]  # port
+                    ),
+                    "[%s/%s]:%d" % (HOSTNAME, *local_addrinfo),
                     message
                 ))
-                sock.send(remote_addrinfo, message.encode('utf-8'))
         except transport.NetworkException as e:
             print("Network Exception: %s" % e.message)
         
         while True:
             try:
-                message, src_addrinfo, dst_addrinfo = sock.receive()
+                message, src_addrinfo, dst_addrinfo, interface = sock.receive()
                 src_host, _ = discovery.gethostbyaddr(src_addrinfo)
                 dst_host, _ = discovery.gethostbyaddr(dst_addrinfo)
                 print("%s %-40s -> %-40s %s" % (
                         datetime.now(),
-                        "[%s/%s:%s]:%d" % (src_host, *src_addrinfo),
-                        "[%s/%s:%s]:%d" % (dst_host, *dst_addrinfo),
+                        "[%s/%s%%%s]:%d" % (
+                            src_host,
+                            src_addrinfo[0], # ilv
+                            interface,
+                            src_addrinfo[1]  # port
+                        ),
+                        "[%s/%s]:%d" % (dst_host, *dst_addrinfo),
                         message.decode('utf-8')
                 ))
             except transport.NetworkException as e:

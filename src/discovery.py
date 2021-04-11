@@ -32,18 +32,17 @@ def getaddrinfo(addr):
     # TODO more sophisticated choice
     entry = entries[0]
     loc, nid, _ = entry
-    return loc, nid, port
+    return ":".join([loc, nid]), port
 
 
 def gethostbyaddr(addr):
-    loc, nid, port = addr
-    key = (loc, nid)
-    entry = inverse_host_map.get(key)
+    ilv, port = addr
+    entry = inverse_host_map.get(ilv)
     if entry != None:
         hst, timestamp = entry
         # If mapping expired
         if time.time() - timestamp > ttl:
-            inverse_host_map[key] = None
+            inverse_host_map[ilv] = None
             entry = None
     if entry == None:
         raise NetworkException("No mapping for addr '%s:%s'" % (loc, nid))
@@ -87,8 +86,10 @@ def process_message(message, received_interface):
     nid = util.bytes_to_hex(nid_bytes)
     loc = util.bytes_to_hex(loc_bytes)
     hst = message[17:].decode('utf-8')
+
+    ilv = ":".join([loc, nid])
     
-    inverse_host_map[(loc, nid)] = hst, timestamp
+    inverse_host_map[ilv] = hst, timestamp
     
     entries = host_map.get(hst)
     if entries == None:
@@ -109,7 +110,7 @@ def process_message(message, received_interface):
     if log_file != None:
         util.write_log(log_file, "\n\t%s\n\t%s" % (
             "%s => %s" % (hst, host_map[hst]),
-            "%s:%s => %s" % (loc, nid, inverse_host_map[(loc, nid)])
+            "%s:%s => %s" % (loc, nid, inverse_host_map[ilv])
         ))
 
     return solititation
@@ -117,14 +118,15 @@ def process_message(message, received_interface):
 
 # Update host coresponding to (loc, nid) if it exists
 def locator_update(loc, nid, new_locs):
+    ilv = ":".join([loc, nid])
     timestamp = time.time()
-    entry = inverse_host_map.get((loc, nid))
+    entry = inverse_host_map.get(ilv)
     if entry != None:
         hst, _ = entry
         host_map[hst] = [(loc, nid, timestamp) for loc in new_locs]
-        inverse_host_map[(loc, nid)] = None
+        inverse_host_map[ilv] = None
         for loc in new_locs:
-            inverse_host_map[(loc, nid)] = hst, timestamp
+            inverse_host_map[ilv] = hst, timestamp
         if log_file != None:
             util.write_log(log_file, "\n\t%s" % (
                 "%s => %s" % (nid, host_map[hst])
