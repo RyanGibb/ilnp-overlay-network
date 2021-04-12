@@ -8,4 +8,4 @@ for host in alice bob clare; do
     echo "$host"
 done
 
-rm $(dirname $0)/../logs/*.log
+rm $(dirname $0)/../../logs/*.log

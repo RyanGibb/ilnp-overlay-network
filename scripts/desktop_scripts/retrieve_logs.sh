@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-log_dir=${1:-"$(dirname $0)"/../logs}
+log_dir=${1:-"$(dirname $0)"/../../logs}
 method=${2:-"wifi"}
 
 echo "Retrieving logs to $log_dir ..."
@@ -9,4 +9,4 @@ for host in alice bob; do
     echo "$host"
 done
 
-mv "$(dirname $0)"/../logs/* "$log_dir"
+mv "$(dirname $0)"/../../logs/* "$log_dir"

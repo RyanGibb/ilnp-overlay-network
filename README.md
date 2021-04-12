@@ -168,7 +168,7 @@ The process for configuring the Pis was:
 * `ssh-copy-id -i ~/.ssh/id_rsa.pub <NAME>`
 
 
-On the workspace, `etc/hosts` contained:
+On the workstation, `etc/hosts` contained:
 ```
 	fe80::dea6:32ff:fec4:67d5 alice-eth
 	fe80::dea6:32ff:fec4:6719 bob-eth
