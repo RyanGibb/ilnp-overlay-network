@@ -200,3 +200,23 @@ And `~/.ssh/config` contained:
 ```
 
 Note that base-station machine was unused for the experiments.
+
+## Directories
+
+* `src` contains the source code of the overlay network.
+
+* `config` contains configaton files for instances of the program on the three Pis (Alice, Bob, and Clare), and the desktop workstation, for the three experiments and the heartbeat program.
+
+* `scripts` contains scripts to run the heartbeat program or one of the experiments on the three Pis.
+
+	`scripts/desktop_scripts` contains scripts to run them on two Pis (Alice and Bob) and the workstation PC with the PC acting as a router.
+
+* `data_processing` is where these scripts retrieve the logs from the Pis to.
+
+* `results` contains the final results of the experiments used in the report in the form of log files and graphs.
+
+	`data_processing/process.py` contains the script used to create the graphs from these logs.
+
+* `system_issues_results` contains logs, graphs, and the script used to create the graphs from the logs from when system stability issues effected the project.
+
+* `heartbeat_logs` contains logs from a test run of the heartbeat program.
