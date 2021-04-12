@@ -165,7 +165,7 @@ The process for configuring the Pis was:
 * `sudo reboot`
 * `echo "<ETH_IPv6_ADDR> <NAME>" >> /etc/hosts` (on all machines)
 * Add `<NAME>` to list of hostnames in `~/.ssh/config` to config ssh user as ubuntu
-* `ssh-copy-id -i ~/.ssh/id\_rsa.pub <NAME>`
+* `ssh-copy-id -i ~/.ssh/id_rsa.pub <NAME>`
 
 
 On the workspace, `etc/hosts` contained:
