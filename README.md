@@ -136,21 +136,20 @@ These were run from a workstation and can use either Ethernet or Wifi.
 ## Hardware Setup
 
 The process for configuring the Pis was:
-
 * Flash SD card with Ubuntu Server LTS 20.04.2 On first login set password to `<PASSWORD>`
 * Change hostname with `hostnamectl set-hostname <NAME>`
 * Configure network
-	* `echo "network: {config: disabled}" > /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg`
-	* Assign static ethernet IP address:\\ \href{https://www.linuxtechi.com/assign-static-ip-address-ubuntu-20-04-lts/}{https://www.linuxtechi.com/assign-static-ip-address-ubuntu-20-04-lts/}
-	* Configure wifi connection\\ (\href{https://itsfoss.com/connect-wifi-terminal-ubuntu/}{https://itsfoss.com/connect-wifi-terminal-ubuntu/})\\ with IPv6 disabled\\ (\href{https://pscl4rke.wordpress.com/2019/10/01/disabling-ipv6-on-ubuntu-18-04-the-netplan-version/}{Disabling IPv6 on Ubuntu 18.04: The Netplan Version})
-	* `/etc/netplan/50-cloud-init.yaml`:
+    * `echo "network: {config: disabled}" > /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg`
+    * Assign static ethernet IP address and configure wifi connection with IPv6 disabled:
+
+    	`/etc/netplan/50-cloud-init.yaml`:
 ```
     network:
         ethernets:
             eth0:
                 dhcp4: false
                 optional: true
-                addresses: [ETH_IPv6_ADDR/64]
+                addresses: [<ETH_IPv6_ADDR>/64]
         wifis:
             wlan0:
                     # disable IPv6
@@ -158,15 +157,15 @@ The process for configuring the Pis was:
                     dhcp4: true
                     optional: true
                     access-points:
-                        "***REMOVED***":
-                            password: "***REMOVED***"
+                        "<WIFI NETWORK>":
+                            password: "<WIFI PASSWORD>"
         version: 2
 ```
-*	* `systemctl start avahi-daemon.service`
+*    * `systemctl start avahi-daemon.service`
 * `sudo reboot`
-* `echo "ETH\_IPv6\_ADDR NAME" >> /etc/hosts` (on all machines)
+* `echo "<ETH_IPv6_ADDR> <NAME>" >> /etc/hosts` (on all machines)
 * Add `<NAME>` to list of hostnames in `~/.ssh/config` to config ssh user as ubuntu
-* `ssh-copy-id -i ~/.ssh/id\_rsa.pub NAME`
+* `ssh-copy-id -i ~/.ssh/id\_rsa.pub <NAME>`
 
 
 On the workspace, `etc/hosts` contained:
