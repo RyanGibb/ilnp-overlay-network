@@ -58,7 +58,7 @@ def get_solititation(loc, nid):
         True,
     )
     # null terminated string
-    message += local_hst.encode('utf-8')
+    message += local_hst.encode("utf-8")
     return message
 
 
@@ -69,7 +69,7 @@ def get_advertisement(loc, nid):
         # not solititation
         False,
     )
-    message += local_hst.encode('utf-8')
+    message += local_hst.encode("utf-8")
     return message
 
 
@@ -85,7 +85,7 @@ def process_message(message, received_interface):
     ) = struct.unpack("!8s8s?", message_struct)
     nid = util.bytes_to_hex(nid_bytes)
     loc = util.bytes_to_hex(loc_bytes)
-    hst = message[17:].decode('utf-8')
+    hst = message[17:].decode("utf-8")
 
     ilv = ":".join([loc, nid])
     

@@ -31,7 +31,7 @@ STATIC_MASKS_FIELD = (
     FLOW_LABEL      << FLOW_LABEL_SHIFT
 )
 
-ALL_NODES_LOC = 'ff02:0:0:1'
+ALL_NODES_LOC = "ff02:0:0:1"
 
 LOC_UPDATE_NEXT_HEADER = 44
 
@@ -111,7 +111,7 @@ def send(loc, nid, data, next_header, interface=None):
             ":".join([loc, nid]) + "%" + interface,
             ":".join([local_loc, local_nid]),
             "(%5d, %2d, %2d)" % (payload_length, next_header, hop_limit),
-            (str(data[:29]) + '...') if len(data) > 32 else data
+            (str(data[:29]) + "...") if len(data) > 32 else data
         ))
     message = header + data
     link.send(interface, message)
@@ -187,7 +187,7 @@ def _receive():
                         ":".join([dst_loc, dst_nid]) + "%" + interface,
                         "*" + ":".join([src_loc, src_nid]) + "%" + received_interface,
                         "(%5d, %2d, %2d)" % (payload_length, next_header, hop_limit),
-                        (str(data[:29]) + '...') if len(data) > 32 else data
+                        (str(data[:29]) + "...") if len(data) > 32 else data
                     ))
         return
     
@@ -196,7 +196,7 @@ def _receive():
             ":".join([src_loc, src_nid]) + "%" + received_interface,
             ":".join([dst_loc, dst_nid]),
             "(%5d,%3d,%3d)" % (payload_length, next_header, hop_limit),
-            (str(data[:29]) + '...') if len(data) > 32 else data
+            (str(data[:29]) + "...") if len(data) > 32 else data
         ))
 
     if next_header == discovery.DISCOVERY_NEXT_HEADER:

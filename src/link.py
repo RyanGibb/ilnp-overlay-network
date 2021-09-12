@@ -53,7 +53,7 @@ def send(interface, data):
         util.write_log(log_file, "%-45s <- %-45s %s" % (
             "[%s]:%d" % (mcast_grp.split("%")[0], mcast_port),
             "[%s]:%d" % (local_addr, mcast_port),
-            (str(data[:61]) + '...') if len(data) > 64 else data
+            (str(data[:61]) + "...") if len(data) > 64 else data
         ))
     sock.sendto(data, sockaddr)
 
@@ -145,7 +145,7 @@ def receive():
         util.write_log(log_file, "%-45s -> %-45s %s" % (
             "[%s]:%s" % (from_ip_without_interface, from_port),
             "[%s]:%d" % (mcast_grp, mcast_port),
-            (str(data[:61]) + '...') if len(data) > 64 else data
+            (str(data[:61]) + "...") if len(data) > 64 else data
         ))
     return data, recived_interface, from_ip_without_interface
 
@@ -166,13 +166,13 @@ def startup():
     # Set time-to-live to 1
     sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
     # Bind to mcast_port
-    sock.bind(('', mcast_port))
+    sock.bind(("", mcast_port))
     # Set the delivery of IPV6_PKTINFO control message on incoming datagrams
     sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_RECVPKTINFO, 1)
 
     global local_addr
     # from https://stackoverflow.com/questions/24196932/how-can-i-get-the-ip-address-from-nic-in-python
-    local_addr = os.popen('ip addr show %s' % mcast_interface).read().split("inet6 ")[1].split("/")[0]
+    local_addr = os.popen("ip addr show %s" % mcast_interface).read().split("inet6 ")[1].split("/")[0]
     
     global log_file
     log_file = util.get_log_file("link")

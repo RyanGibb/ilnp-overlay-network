@@ -52,7 +52,7 @@ class Socket:
             util.write_log(log_file, "%-30s <- %-30s %s" % (
                 "[%s:%s%%%s]:%d" % (remote_loc, remote_nid, interface, remote_port),
                 "[%s:%s]:%d" % (interface, network.local_nid, self.port),
-                (str(data[:29]) + '...') if len(data) > 32 else data
+                (str(data[:29]) + "...") if len(data) > 32 else data
             ))
         return interface
 
@@ -88,7 +88,7 @@ class ReceiveThread(threading.Thread):
             src_port = util.bytes_to_int(sre_port_bytes)
             dst_port = util.bytes_to_int(dst_port_bytes)
             data = message[4:]
-            # drop if not valid port (if there's no socket bound to this port)
+            # drop if not valid port (if there"s no socket bound to this port)
             if dst_port not in in_queues:
                 continue
             in_queues.setdefault(
@@ -108,7 +108,7 @@ class ReceiveThread(threading.Thread):
                 util.write_log(log_file, "%-30s -> %-30s %s" % (
                     "[%s:%s%%%s]:%d" % (src_loc, src_nid, interface, src_port),
                     "[%s:%s]:%d" % (dst_loc, dst_nid, dst_port),
-                    (str(data[:29]) + '...') if len(data) > 32 else data
+                    (str(data[:29]) + "...") if len(data) > 32 else data
                 ))
 
 

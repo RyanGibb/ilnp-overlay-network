@@ -27,7 +27,7 @@ def heartbeat():
                 message = "%s | %s" % (str(datetime.now()), HOSTNAME)
                 remote_addrinfo = discovery.getaddrinfo(remote)
                 local_addrinfo = discovery.getaddrinfo(local)
-                interface = sock.send(remote_addrinfo, message.encode('utf-8'))
+                interface = sock.send(remote_addrinfo, message.encode("utf-8"))
                 print("%s %-40s <- %-40s %s" % (
                     datetime.now(),
                     "[%s/%s%%%s]:%d" % (
@@ -56,7 +56,7 @@ def heartbeat():
                             src_addrinfo[1]  # port
                         ),
                         "[%s/%s]:%d" % (dst_host, *dst_addrinfo),
-                        message.decode('utf-8')
+                        message.decode("utf-8")
                 ))
             except transport.NetworkException as e:
                 break
