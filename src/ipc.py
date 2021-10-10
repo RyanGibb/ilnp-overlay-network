@@ -36,20 +36,22 @@ class SendThread(threading.Thread):
         while True:
             data, addr = udp_sock.recvfrom(mtu)
             local_port = addr[1]
-            remote, ilnp_sock = proxy_map[local_port]
             try:
-                remote_addrinfo = discovery.getaddrinfo(remote)
-                print("%s -> %s: %s" % (local_port, remote_addrinfo, data))
-                ilnp_sock.send(remote_addrinfo, data)
-            except transport.NetworkException as e:
-                print("Network Exception: %s" % e.message)
-
+                remote, ilnp_sock = proxy_map[local_port]
+                try:
+                    remote_addrinfo = discovery.getaddrinfo(remote)
+                    print("%s -> %s: %s" % (local_port, remote_addrinfo, data))
+                    ilnp_sock.send(remote_addrinfo, data)
+                except transport.NetworkException as e:
+                    print("Network Exception: %s" % e.message)
+            except KeyError :
+                print("No mapping for %d" % local_port)
+            
 
 class ReceiveThread(threading.Thread):
-    def __init__(self, ilnp_sock, local_port):
+    def __init__(self, ilnp_sock):
         super().__init__()
         self.ilnp_sock = ilnp_sock
-        self.local_port = local_port
     
     def run(self):
         while True:
@@ -83,6 +85,6 @@ while True:
 
     proxy_map[local_port] = ((remote_ilv, remort_port), ilnp_sock)
 
-    ReceiveThread(ilnp_sock, local_port).start()
+    ReceiveThread(ilnp_sock).start()
 
-    print("Created mapping %s -> %s" % (local_port, (remote_ilv, remort_port)))
+    print("Created mapping: %s -> %s" % (local_port, (remote_ilv, remort_port)))
