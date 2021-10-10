@@ -18,7 +18,7 @@ except OSError:
 
 sock.bind(sock_addr)
 
-sock.sendto(("%s %s %s" % tuple(sys.argv[1:])).encode("utf-8"), server_sock_addr)
+sock.sendto(" ".join(sys.argv[1:]).encode("utf-8"), server_sock_addr)
 msg_bytes, addr = sock.recvfrom(1024)
 msg = msg_bytes.decode("utf-8")
 print(msg)
