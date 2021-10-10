@@ -172,7 +172,7 @@ def startup():
 
     global local_addr
     # from https://stackoverflow.com/questions/24196932/how-can-i-get-the-ip-address-from-nic-in-python
-    local_addr = os.popen("ip addr show %s" % mcast_interface).read().split("inet6 ")[1].split("/")[0]
+    local_addr = os.popen("ip addr show %s" % mcast_interface).read().split("inet6 ")[-1].split("/")[0]
     
     global log_file
     log_file = util.get_log_file("link")
