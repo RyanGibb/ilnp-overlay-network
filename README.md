@@ -197,7 +197,6 @@ And `~/.ssh/config` contained:
 	Host alice-eth
 	Host bob-eth
 	Host clare-eth
-
 ```
 
 Note that base-station machine was unused for the experiments.
