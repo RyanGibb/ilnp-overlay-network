@@ -1,6 +1,6 @@
 # ILNP Overlay Network
 
-See [ryan.gibb.xyz/diss/](https://ryan.gibb.xyz/diss/)
+See [gibbr.org/diss/](https://gibbr.org/diss/)
 
 ## Running
 
