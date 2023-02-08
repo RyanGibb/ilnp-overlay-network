@@ -1,6 +1,6 @@
 # ILNP Overlay Network
 
-See [ryan.freumh.org/diss/](https://ryan.freumh.org/diss/)
+See [ryan.freumh.org//blog/network-layer-mobility/](https://ryan.freumh.org/blog/network-layer-mobility/)
 
 ## Running
 
